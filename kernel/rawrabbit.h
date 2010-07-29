@@ -50,4 +50,32 @@ struct rr_devsel {
 
 #define RR_DEVSEL_UNUSED	0xffff
 
+/* Offsets for BAR areas in llseek() and/or ioctl */
+#define RR_BAR_0		0x00000000
+#define RR_BAR_2		0x20000000
+#define RR_BAR_4		0x40000000
+#define __RR_GET_BAR(x)		((x) >> 28)
+
+struct rr_iocmd {
+	__u32 address; /* bar and offset */
+	__u32 datasize; /* 1 or 2 or 4 or 8 */
+	union {
+		__u8 data8;
+		__u16 data16;
+		__u32 data32;
+		__u64 data64;
+	};
+};
+
+/* ioctl commands */
+#define __RR_IOC_MAGIC '4' /* random or so */
+
+#define RR_DEVSEL	 _IOW(__RR_IOC_MAGIC, 0, struct rr_devsel)
+#define RR_DEVGET	 _IOR(__RR_IOC_MAGIC, 1, struct rr_devsel)
+#define RR_READ		_IOWR(__RR_IOC_MAGIC, 2, struct rr_iocmd)
+#define RR_WRITE	 _IOW(__RR_IOC_MAGIC, 3, struct rr_iocmd)
+
+#define VFAT_IOCTL_READDIR_BOTH         _IOR('r', 1, struct dirent [2])
+
+
 #endif /* __RAWRABBIT_H__ */

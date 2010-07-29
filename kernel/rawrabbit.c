@@ -52,6 +52,9 @@ static int rr_fill_table_and_probe(struct rr_dev *dev)
 {
 	int ret;
 
+	if (dev->pdev)
+		pci_unregister_driver(dev->pci_driver);
+
 	rr_fill_table(dev);
 
 	/* Use the completion mechanism to be notified of probes */
@@ -70,7 +73,6 @@ static int rr_fill_table_and_probe(struct rr_dev *dev)
 	return ret;
 }
 
-
 static int  rr_pciprobe (struct pci_dev *pdev, const struct pci_device_id *id)
 {
 	struct rr_dev *dev = &rr_dev;
@@ -85,6 +87,8 @@ static int  rr_pciprobe (struct pci_dev *pdev, const struct pci_device_id *id)
 	else
 		dev->pdev = pdev;
 	spin_unlock(&dev->lock);
+
+	/* FIXME: the check for bus/devfn is missing */
 
 	if (dev->pdev == pdev)
 		complete(&dev->complete);
@@ -124,7 +128,90 @@ static struct rr_dev rr_dev = {
  */
 static long rr_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 {
-	return -EOPNOTSUPP;
+	struct rr_dev *dev = f->private_data;
+	int size = _IOC_SIZE(cmd); /* the size bitfield in cmd */
+	int ret = 0;
+
+	/* local copies: use a union to save stack space */
+	union {
+		struct rr_iocmd iocmd;
+		struct rr_devsel devsel;
+	} karg;
+
+	/*
+	 * extract the type and number bitfields, and don't decode
+	 * wrong cmds: return ENOIOCTLCMD before verify_area()
+	 */
+	if (_IOC_TYPE(cmd) != __RR_IOC_MAGIC)
+		return -ENOIOCTLCMD;
+
+	/*
+	 * the direction is a bitmask, and VERIFY_WRITE catches R/W
+	 * transfers. `Dir' is user-oriented, while
+	 * verify_area is kernel-oriented, so the concept of "read" and
+	 * "write" is reversed
+	 */
+	if (_IOC_DIR(cmd) & _IOC_READ) {
+		if (!access_ok(VERIFY_WRITE, (void *)arg, size))
+			return -EFAULT;
+	}
+	else if (_IOC_DIR(cmd) & _IOC_WRITE) {
+		if (!access_ok(VERIFY_READ, (void *)arg, size))
+			return -EFAULT;
+	}
+
+	/* first, retrieve data from userspace */
+	if ((_IOC_DIR(cmd) & _IOC_WRITE) && (size <= sizeof(karg)))
+		if (copy_from_user(&karg, (void *)arg, size))
+			return -EFAULT;
+
+	switch(cmd) {
+
+	case RR_DEVSEL:
+		/* If we are the only user, change device requested id */
+		spin_lock(&dev->lock);
+		if (dev->usecount > 1)
+			ret = -EBUSY;
+		spin_unlock(&dev->lock);
+		if (ret < 0)
+			break;
+		/* Warning: race: we can't take the lock */
+		*dev->devsel = karg.devsel;
+		ret = rr_fill_table_and_probe(dev);
+		if (!ret)
+			ret = -ENODEV; /* timeout */
+		else if (ret > 0)
+			ret = 0; /* success */
+		break;
+
+	case RR_DEVGET:
+		/* Return to user space the id of the current device */
+		spin_lock(&dev->lock);
+		if (!dev->pdev) {
+			spin_unlock(&dev->lock);
+			return -ENODEV;
+		}
+		memset(&karg.devsel, 0, sizeof(karg.devsel));
+		karg.devsel.vendor = dev->pdev->vendor;
+		karg.devsel.device = dev->pdev->device;
+		karg.devsel.subvendor = dev->pdev->subsystem_vendor;
+		karg.devsel.subdevice = dev->pdev->subsystem_device;
+		karg.devsel.bus = dev->pdev->bus->number;
+		karg.devsel.devfn = dev->pdev->devfn;
+		spin_unlock(&dev->lock);
+		break;
+
+	default:
+		return -ENOIOCTLCMD;
+	}
+
+	/* finally, copy data to user space and return */
+	if (ret < 0)
+		return ret;
+	if ((_IOC_DIR(cmd) & _IOC_READ) && (size <= sizeof(karg)))
+		if (copy_to_user((void *)arg, &karg, size))
+			return -EFAULT;
+	return ret;
 }
 
 /*

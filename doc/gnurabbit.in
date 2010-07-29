@@ -121,7 +121,13 @@ the pair @i{vendor}/@i{device} it is able to drive.
 
 The pair of identifiers is predefined at compile time but can be changed
 at run time. The defaults (set forth in @code{rawrabbit.h} refer to
-GN4124 evaluation board.
+GN4124 evaluation board.  The values can also be changed at module
+load time by setting the @code{vendor} and @code{device} arguments.
+For example this sets @i{rawrabbit} to look for a 3com Ethernet device:
+
+@example
+    insmod rawrabbit.ko vendor=0x10b7 device=0x9055
+@end example
 
 When the driver is loaded it registers as a PCI driver for the
 preselected vendor/device pair, but loading succeeds even if no
@@ -163,9 +169,10 @@ later versions, as time permits.
 
 @c FIXME: data access size
 The @i{read} and @i{write} implementations currently don't enforce
-general data-size constraints: reading or writing 1, 2, 4 bytes at a
-time forces 8, 16, 32 bit accesses respectively, while bigger
-transfers use unpredictable access patterns to I/O memory.
+general data-size constraints: reading or writing 1, 2, 4, 8 bytes at a
+time forces 8, 16, 32, 64 bit accesses respectively, while bigger
+transfers use unpredictable access patterns to I/O memory, as
+the driver uses @i{copy_from_user} and @i{copy_to_user}.
 
 @c FIXME: dma
 No DMA support is currently implemented (no buffer management exists)
@@ -211,6 +218,7 @@ The following system calls are implemented in @i{rawrabbit}:
 
 @item read
 @itemx write
+	@b{Warning:} these are not yet implemented in this version.
 	By reading and writing the device, a process can access board
         I/O space.  The file position (set through @i{llseek} or by
         sequential access of file data) is used to specify both the BAR
@@ -219,6 +227,7 @@ The following system calls are implemented in @i{rawrabbit}:
         size returns @code{EIO}.
 
 @item mmap
+	@b{Warning:} these are not yet implemented in this version.
 	The @i{mmap} system call allows direct user-space access to the
         I/O memory. The device offset has the same meaning as for @i{read},
         but accesses to undefined pages cause a @code{SIGBUS} to be sent.
@@ -232,6 +241,29 @@ The following system calls are implemented in @i{rawrabbit}:
 @c ==========================================================================
 @node Ioctl commands, User space demo programs, System calls implemented, Raw PCI I/O
 @section Ioctl commands
+
+The followingg @i{ioctl} commands are currently implemented. The type
+of the third argument is shown in parenteses after each command:
+
+@table @code
+
+@item RR_DEVSEL (struct rr_devsel *)
+
+	@b{Warning:} selection by bus and devfn is not implemented.
+	The command copies device selection information to kernel space.
+        If the device has been opened more than once the command fails
+        with @code{EBUSY}; otherwise the pci driver is unregistered and
+        re-registered with a new @code{pci_id} item. If no device matches
+        the new selection @code{ENODEV} is returned after a timeout of
+        100ms.
+
+@item RR_DEVGET (struct rr_devsel *)
+
+	The command returns to user space device information: vendor/device,
+        subvendor/subdevice and bus/devfn. If no device is currently
+        managed by the driver, @code{ENODEV} is returned.
+
+@end table
 
 @c ==========================================================================
 @node User space demo programs,  , Ioctl commands, Raw PCI I/O
