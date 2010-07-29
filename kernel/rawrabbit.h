@@ -27,4 +27,18 @@ struct rr_devsel {
 
 #define RR_DEVSEL_UNUSED	0xffff
 
+#ifdef __KERNEL__ /* The rest of the file is for driver-internal stuff */
+#include <linux/pci.h>
+
+struct rr_dev {
+	struct pci_driver	*pci_driver;
+	struct pci_device_id	*id_table;
+	spinlock_t		 lock;
+	struct rr_devsel	 devsel;
+	int			 usecount;
+	int			 devcount;
+	int			 proberesult;
+};
+
+#endif /* __KERNEL__ */
 #endif /* __RAWRABBIT_H__ */
