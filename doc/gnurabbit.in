@@ -1,0 +1,247 @@
+\input texinfo    @c -*-texinfo-*-
+%
+% gnurabbit.in - main file for the documentation
+%
+% Copyright (C) 2010 Alessandro Rubini <rubini@gnudd.com>
+% Released according to the GNU GPL, version 2 or any later version.
+%
+% This work is part of the White Rabbit project and has been sponsored
+% by CERN, the European Institute for Nuclear Research.
+%%%%
+
+%------------------------------------------------------------------------------
+%
+%                         NOTE FOR THE UNAWARE USER
+%                         =========================
+%
+%    This file is a texinfo source. It isn't the binary file of some strange
+%    editor of mine. If you want ASCII, you should "make gnurabbit.txt".
+%
+%------------------------------------------------------------------------------
+
+%
+% This is not a conventional info file...
+% I use three extra features:
+%   - The '%' as a comment marker, if at beginning of line ("\%" -> "%")
+%   - leading blanks are allowed (this is something I can't live without)
+%   - braces are automatically escaped when they appear in example blocks
+%
+
+@comment %**start of header
+@documentlanguage en
+@documentencoding ISO-8859-1
+@setfilename gnurabbit.info
+@settitle Gnu Rabbit
+@iftex
+@afourpaper
+@end iftex
+@paragraphindent none
+@comment %**end of header
+
+@setchapternewpage off
+
+@set update-month July 2010
+
+@finalout
+
+@titlepage
+@title Gnu Rabbit
+@subtitle Code for GENNUM and White Rabbit
+@subtitle @value{update-month}
+
+@author Alessandro Rubini (@code{rubini@@gnudd.com})
+@author Work sponsored by CERN (@code{www.cern.ch})
+@end titlepage
+@setchapternewpage off
+@headings single
+
+@c ##########################################################################
+@node Top, Driver for GN4124, (dir), (dir)
+@top Introduction
+
+This package includes a device driver for the GN4124 PCI-E board and a
+module for raw PCI I/O, used at CERN as development tool to help
+protopyping White Rabbit hardware and software.
+
+@menu
+* Driver for GN4124::           
+* Raw PCI I/O::                 
+@end menu
+
+@c ##########################################################################
+@node Driver for GN4124, Raw PCI I/O, Top, Top
+@chapter Driver for GN4124
+
+Still to be done, I'm sorry. Stay tuned.
+
+@c ##########################################################################
+@node Raw PCI I/O,  , Driver for GN4124, Top
+@chapter Raw PCI I/O
+
+The kernel module for raw I/O is called @i{rawrabbit}. After
+running @i{make} you'll find a file called @code{rawrabbit.ko}.
+
+To compile you may optionally set the forllowing three variables in
+your environment:
+
+@table @code
+@item CROSS_COMPILE
+	The variable defaults to the empty string, used for native compilation
+@item ARCH
+	The variable defaults to the build architecture
+@item LINUX
+	This is the location of the kernel source against which you
+        are compiling. It defaults to the place where the currently running
+        kernel has been compiled (assuming it was compiled on this same
+        system).
+@end table
+
+The module creates a @i{misc} char device driver, with major number 10
+and minor number 42.  If you are running @i{udev} the special file
+@code{/dev/rawrabbit} will be created automatically.
+
+@b{Warning:} future releases of this package may change the device
+number or switch to several devices, I'm yet undecided on this choice.
+
+@menu
+* General features of rawrabbit::  
+* Bugs and misfeatures::        
+* System calls implemented::    
+* Ioctl commands::              
+* User space demo programs::    
+@end menu
+
+@c ==========================================================================
+@node General features of rawrabbit, Bugs and misfeatures, Raw PCI I/O, Raw PCI I/O
+@section  General features of rawrabbit
+
+The driver is designed to act as a misc device (i.e. a char device)
+towards user programs and as a PCI driver towards hardware, declaring
+the pair @i{vendor}/@i{device} it is able to drive.
+
+The pair of identifiers is predefined at compile time but can be changed
+at run time. The defaults (set forth in @code{rawrabbit.h} refer to
+GN4124 evaluation board.
+
+When the driver is loaded it registers as a PCI driver for the
+preselected vendor/device pair, but loading succeeds even if no
+matching board exists on the system, as user space programs can
+request a different vendor/device pair at runtime.  Since a single bus
+might host several instances of the same peripheral, user space
+programs can also specify the @i{bus} and @i{devfn} values in order to
+select a specific instance of the hardware device. Similarly, the pair
+@i{subvendor}/@i{subdevice} may be specified.
+
+User programs can use @i{read} and @i{write}, @i{mmap} and @i{ioctl}
+as described later.  Each and every command refers to the device
+currently selected by means of the vendor/device pair as well as
+bus/devfn and/or subvendor/subdevice if specified.
+
+The driver allows access to the PCI memory regions for generic I/O
+operations. Future versions will provide for DMA (buffer allocation
+and deallocation, as well as direct I/O to the buffer) and interrupt
+handling in user space.
+@c FIXME: dma access
+@c FIXME: interrupt access
+
+In the source file, each global function or variable declared in the
+file itself has @code{rr_} as prefix in the name, even if its scope is
+static. Local variables have simple names with no prefix, like @code{i}
+or @code{dev}.  This convention is followed so when reading
+random parts of the source you can immediately know wheterh the symbol
+is defined in the same file (like @code{rr_dev}) or is an external Linux
+resource (like @code{pci_driver}).
+
+@c ==========================================================================
+@node Bugs and misfeatures, System calls implemented, General features of rawrabbit, Raw PCI I/O
+@section Bugs and misfeatures
+
+@c FIXME: single open
+This version of @i{rawrabbit} creates a single device and can act on a
+single PCI peripheral at a time. This limitation will be removed in
+later versions, as time permits.
+
+@c FIXME: data access size
+The @i{read} and @i{write} implementations currently don't enforce
+general data-size constraints: reading or writing 1, 2, 4 bytes at a
+time forces 8, 16, 32 bit accesses respectively, while bigger
+transfers use unpredictable access patterns to I/O memory.
+
+@c FIXME: dma
+No DMA support is currently implemented (no buffer management exists)
+
+@c FIXME: interrupt
+No interrupt support is available.  I plan to implement interrupt
+support by means of @i{ioctl} commands and a blocking read/poll interface.
+The driver would disable the interrupt in the controller until user
+space notifies the driver that it is done handling it.
+
+@c FIXME: odd bars
+The driver assumes to work with PCI-E so odd BAR areas are not supported.
+This limitation may be lifted in future versions if needed.
+
+@c ==========================================================================
+@node System calls implemented, Ioctl commands, Bugs and misfeatures, Raw PCI I/O
+@section System calls implemented
+
+The following system calls are implemented in @i{rawrabbit}:
+
+@table @i
+
+@item open
+@itemx close
+	These system calls are used to keep a refcount of device use.
+        If the device has been opened more than once, it will refuse
+        to change the active device, to prevent possible confusion in
+        another process using @i{rawrabbit} at the same time. Please note
+        that after @i{fork} the device is still opened twice but the
+        driver can't know about it, so in this case changing the active
+        device is still possible.
+
+@item llseek
+	The @i{seek} family of system calls is implemented using the
+        default kernel implementation. A process may seek the device to
+        access specific registers in specific BAR areas. The offset
+        being used selects the BAR and the offset within the BAR
+        at the same time. Each BAR is limited to an extension of 512MB:
+        so BAR0 starts at 0, BAR 2 starts at 0x2000.0000 and BAR 4 starts
+        at offset 0x4000.0000; if you prefer symbolic names,
+        @code{RR_BAR_0}, @code{RR_BAR_2} and @code{RR_BAR_4}
+        are defined in @code{rawrabbit.h}.
+
+@item read
+@itemx write
+	By reading and writing the device, a process can access board
+        I/O space.  The file position (set through @i{llseek} or by
+        sequential access of file data) is used to specify both the BAR
+        and the offset within the BAR as described above. Access to
+        an unexistent BAR returns @code{EINVAL}, access outside the BAR
+        size returns @code{EIO}.
+
+@item mmap
+	The @i{mmap} system call allows direct user-space access to the
+        I/O memory. The device offset has the same meaning as for @i{read},
+        but accesses to undefined pages cause a @code{SIGBUS} to be sent.
+
+@item ioctl
+	A number of @i{ioctl} commands are supported, they are listed
+        in the next section.
+
+@end table        
+
+@c ==========================================================================
+@node Ioctl commands, User space demo programs, System calls implemented, Raw PCI I/O
+@section Ioctl commands
+
+@c ==========================================================================
+@node User space demo programs,  , Ioctl commands, Raw PCI I/O
+@section User space demo programs
+
+The subdirectory @code{user/} of this package 
+
+
+@iftex
+@contents
+@end iftex
+
+@bye

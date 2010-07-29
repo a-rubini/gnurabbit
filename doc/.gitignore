@@ -1,0 +1,17 @@
+# temporaries
+gnurabbit.texi
+gnurabbit.aux
+gnurabbit.cp
+gnurabbit.fn
+gnurabbit.ky
+gnurabbit.log
+gnurabbit.pg
+gnurabbit.toc
+gnurabbit.tp
+gnurabbit.vr
+
+# outputs
+gnurabbit.html
+gnurabbit.info
+gnurabbit.pdf
+gnurabbit.txt
