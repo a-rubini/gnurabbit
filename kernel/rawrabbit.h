@@ -10,6 +10,29 @@
 #ifndef __RAWRABBIT_H__
 #define __RAWRABBIT_H__
 #include <linux/types.h>
+#include <linux/ioctl.h>
+
+#ifdef __KERNEL__ /* The initial part of the file is driver-internal stuff */
+#include <linux/pci.h>
+#include <linux/spinlock.h>
+#include <linux/completion.h>
+
+struct rr_devsel;
+
+struct rr_dev {
+	struct rr_devsel	*devsel;
+	struct pci_driver	*pci_driver;
+	struct pci_device_id	*id_table;
+	struct pci_dev		*pdev; /* non-null after probe */
+	spinlock_t		 lock;
+	struct completion	 complete;
+	int			 usecount;
+	int			 proberesult;
+};
+
+#define RR_PROBE_TIMEOUT	(HZ/10)		/* for pci_register_drv */
+
+#endif /* __KERNEL__ */
 
 /* By default, the driver registers for this vendor/devid */
 #define RR_DEFAULT_VENDOR	0x1a39
@@ -27,18 +50,4 @@ struct rr_devsel {
 
 #define RR_DEVSEL_UNUSED	0xffff
 
-#ifdef __KERNEL__ /* The rest of the file is for driver-internal stuff */
-#include <linux/pci.h>
-
-struct rr_dev {
-	struct pci_driver	*pci_driver;
-	struct pci_device_id	*id_table;
-	spinlock_t		 lock;
-	struct rr_devsel	 devsel;
-	int			 usecount;
-	int			 devcount;
-	int			 proberesult;
-};
-
-#endif /* __KERNEL__ */
 #endif /* __RAWRABBIT_H__ */

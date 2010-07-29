@@ -9,12 +9,15 @@
  */
 #include <linux/module.h>
 #include <linux/moduleparam.h>
+#include <linux/spinlock.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/pci.h>
 #include <linux/fs.h>
 #include <linux/miscdevice.h>
+#include <linux/completion.h>
 #include <linux/ioctl.h>
+#include <asm/uaccess.h>
 
 #include "rawrabbit.h"
 
@@ -34,16 +37,39 @@ static struct pci_device_id rr_idtable[2]; /* last must be zero */
 
 static void rr_fill_table(struct rr_dev *dev)
 {
-	if (dev->devsel.subvendor == RR_DEVSEL_UNUSED) {
+	if (dev->devsel->subvendor == RR_DEVSEL_UNUSED) {
 		dev->id_table->subvendor = PCI_ANY_ID;
 		dev->id_table->subdevice = PCI_ANY_ID;
 	} else {
-		dev->id_table->subvendor = dev->devsel.subvendor;
-		dev->id_table->subdevice = dev->devsel.subdevice;
+		dev->id_table->subvendor = dev->devsel->subvendor;
+		dev->id_table->subdevice = dev->devsel->subdevice;
 	}
-	dev->id_table->vendor = dev->devsel.vendor;
-	dev->id_table->device = dev->devsel.device;
+	dev->id_table->vendor = dev->devsel->vendor;
+	dev->id_table->device = dev->devsel->device;
 }
+
+static int rr_fill_table_and_probe(struct rr_dev *dev)
+{
+	int ret;
+
+	rr_fill_table(dev);
+
+	/* Use the completion mechanism to be notified of probes */
+	init_completion(&dev->complete);
+	ret = pci_register_driver(dev->pci_driver);
+	if (ret < 0) {
+		printk(KERN_ERR "%s: Can't register pci driver\n",
+		       KBUILD_MODNAME);
+		return ret;
+	}
+	/* This ret is 0 (timeout) or positive */
+	ret = wait_for_completion_timeout(&dev->complete, RR_PROBE_TIMEOUT);
+	if (!ret) {
+		printk("%s: Warning: no device found\n", __func__);
+	}
+	return ret;
+}
+
 
 static int  rr_pciprobe (struct pci_dev *pdev, const struct pci_device_id *id)
 {
@@ -52,13 +78,16 @@ static int  rr_pciprobe (struct pci_dev *pdev, const struct pci_device_id *id)
 
 	printk("%s\n", __func__);
 
+	/* Only manage one device, refuse further probes */
 	spin_lock(&dev->lock);
-	if (dev->devcount)
+	if (dev->pdev)
 		ret = -EBUSY;
 	else
-		dev->devcount++;
-	wmb();
+		dev->pdev = pdev;
 	spin_unlock(&dev->lock);
+
+	if (dev->pdev == pdev)
+		complete(&dev->complete);
 
 	return 0;
 }
@@ -71,10 +100,7 @@ static void rr_pciremove(struct pci_dev *pdev)
 	printk("%s\n", __func__);
 
 	spin_lock(&dev->lock);
-	dev->devcount--;
-	if (dev->devcount != 0)
-		printk(KERN_ERR "%s: devount didn't drop to 0 (%i)\n",
-		       __func__, dev->devcount);
+	dev->pdev = NULL;
 	spin_unlock(&dev->lock);
 }
 
@@ -86,9 +112,11 @@ static struct pci_driver rr_pcidrv = {
 };
 
 /* There is only one device by now; I didn't find how to associate to pcidev */
+static struct rr_devsel rr_devsel;
 static struct rr_dev rr_dev = {
 	.pci_driver = &rr_pcidrv,
 	.id_table = rr_idtable,
+	.devsel = &rr_devsel,
 };
 
 /*
@@ -109,7 +137,6 @@ static int rr_open(struct inode *ino, struct file *f)
 
 	spin_lock(&dev->lock);
 	dev->usecount++;
-	wmb();
 	spin_unlock(&dev->lock);
 
 	return 0;
@@ -121,7 +148,6 @@ static int rr_release(struct inode *ino, struct file *f)
 
 	spin_lock(&dev->lock);
 	dev->usecount--;
-	wmb();
 	spin_unlock(&dev->lock);
 
 	return 0;
@@ -166,13 +192,7 @@ static int rr_init(void)
 	int ret;
 	struct rr_dev *dev = &rr_dev; /* always use dev as pointer */
 
-	/* prepare registration of the pci driver according to parameters */
-	dev->devsel.vendor = rr_vendor;
-	dev->devsel.device = rr_device;
-	dev->devsel.subvendor = RR_DEVSEL_UNUSED;
-	dev->devsel.bus = RR_DEVSEL_UNUSED;
-	rr_fill_table(dev);
-
+	/* misc device, that's trivial */
 	ret = misc_register(&rr_misc);
 	if (ret < 0) {
 		printk(KERN_ERR "%s: Can't register misc device\n",
@@ -180,14 +200,19 @@ static int rr_init(void)
 		return ret;
 	}
 
-	ret = pci_register_driver(&rr_pcidrv);
+	/* prepare registration of the pci driver according to parameters */
+	dev->devsel->vendor = rr_vendor;
+	dev->devsel->device = rr_device;
+	dev->devsel->subvendor = RR_DEVSEL_UNUSED;
+	dev->devsel->bus = RR_DEVSEL_UNUSED;
+
+	/* This function return < 0 on error, 0 on timeout, > 0 on success */
+	ret = rr_fill_table_and_probe(dev);
 	if (ret < 0) {
-		printk(KERN_ERR "%s: Can't register pci driver\n",
-		       KBUILD_MODNAME);
 		misc_deregister(&rr_misc);
 		return ret;
-		
 	}
+
 	return 0;
 }
 
