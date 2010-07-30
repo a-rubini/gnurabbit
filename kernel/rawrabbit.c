@@ -52,14 +52,23 @@ static int rr_fill_table_and_probe(struct rr_dev *dev)
 {
 	int ret;
 
-	if (dev->pdev)
+	spin_lock(&dev->lock);
+	if (dev->registered) {
 		pci_unregister_driver(dev->pci_driver);
+		dev->registered = 0;
+	}
+	spin_unlock(&dev->lock);
 
 	rr_fill_table(dev);
 
 	/* Use the completion mechanism to be notified of probes */
+	spin_lock(&dev->lock);
 	init_completion(&dev->complete);
 	ret = pci_register_driver(dev->pci_driver);
+	if (ret == 0)
+		dev->registered = 1;
+	spin_unlock(&dev->lock);
+
 	if (ret < 0) {
 		printk(KERN_ERR "%s: Can't register pci driver\n",
 		       KBUILD_MODNAME);
@@ -73,7 +82,8 @@ static int rr_fill_table_and_probe(struct rr_dev *dev)
 	return ret;
 }
 
-static int  rr_pciprobe (struct pci_dev *pdev, const struct pci_device_id *id)
+/* The probe and remove function can't get locks, as it's already locked */
+static int rr_pciprobe (struct pci_dev *pdev, const struct pci_device_id *id)
 {
 	struct rr_dev *dev = &rr_dev;
 	int ret = 0;
@@ -81,17 +91,18 @@ static int  rr_pciprobe (struct pci_dev *pdev, const struct pci_device_id *id)
 	printk("%s\n", __func__);
 
 	/* Only manage one device, refuse further probes */
-	spin_lock(&dev->lock);
 	if (dev->pdev)
-		ret = -EBUSY;
-	else
-		dev->pdev = pdev;
-	spin_unlock(&dev->lock);
+		return -EBUSY;
+	/* vendor/device and subvendor/subdevice have already been matched */
+	if (dev->devsel->bus != RR_DEVSEL_UNUSED) {
+		if (dev->devsel->bus != pdev->bus->number)
+			return -ENODEV;
+		if (dev->devsel->devfn != pdev->devfn)
+			return -ENODEV;
+	}
 
-	/* FIXME: the check for bus/devfn is missing */
-
-	if (dev->pdev == pdev)
-		complete(&dev->complete);
+	dev->pdev = pdev;
+	complete(&dev->complete);
 
 	return 0;
 }
@@ -103,9 +114,7 @@ static void rr_pciremove(struct pci_dev *pdev)
 	/* This function is called when the pcidrv is removed */
 	printk("%s\n", __func__);
 
-	spin_lock(&dev->lock);
 	dev->pdev = NULL;
-	spin_unlock(&dev->lock);
 }
 
 static struct pci_driver rr_pcidrv = {
@@ -170,8 +179,10 @@ static long rr_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 	case RR_DEVSEL:
 		/* If we are the only user, change device requested id */
 		spin_lock(&dev->lock);
-		if (dev->usecount > 1)
+		if (dev->usecount > 1) {
+			printk("usecount %i\n", dev->usecount);
 			ret = -EBUSY;
+		}
 		spin_unlock(&dev->lock);
 		if (ret < 0)
 			break;

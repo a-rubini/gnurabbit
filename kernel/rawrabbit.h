@@ -27,7 +27,7 @@ struct rr_dev {
 	spinlock_t		 lock;
 	struct completion	 complete;
 	int			 usecount;
-	int			 proberesult;
+	int			 registered;
 };
 
 #define RR_PROBE_TIMEOUT	(HZ/10)		/* for pci_register_drv */
