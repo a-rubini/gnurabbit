@@ -269,7 +269,71 @@ of the third argument is shown in parenteses after each command:
 @node User space demo programs,  , Ioctl commands, Raw PCI I/O
 @section User space demo programs
 
-The subdirectory @code{user/} of this package 
+The subdirectory @code{user/} of this package includes the user-space
+sample tools.  The helper for @i{rawrabbit} (@i{rr}) is called @i{rrcmd}.
+
+@menu
+* rrcmd::                       
+@end menu
+
+@c --------------------------------------------------------------------------
+@node rrcmd,  , User space demo programs, User space demo programs
+@subsection rrcmd
+
+The @i{rrcmd} program can do raw I/O and change the active binding of
+the device.
+
+Every command line can change the binding and issue a command. Since
+binding is persistent, you can issue commands without specifying a new
+binding.  The initial binding is defined by module parameters, or by
+default as a GN4124 device.
+
+To specify a new binding, the syntax is
+``@code{@i{vendor}:@i{device}/@i{subvendor}:@i{subdevice}@@@i{bus}:@i{devfn}}''
+where the first pair is mandatory and the following ones are optional.
+
+The following is an example session with @i{rrcmd}, from the
+compilation directory, note that in this case I'm using the GN4124
+device and an ethernet port without active driver.
+
+@example
+   tornado% sudo insmod kernel/rawrabbit.ko
+   tornado% ./user/rrcmd info
+   /dev/rawrabbit: bound to 1a39:0004/1a39:0004@0001:0000
+   tornado% ./user/rrcmd 10b7:9055
+   tornado% ./user/rrcmd info
+   /dev/rawrabbit: bound to 10b7:9055/10b7:9055@0004:0000
+   tornado% ./user/rrcmd 1a39:0004 info
+   /dev/rawrabbit: bound to 1a39:0004/1a39:0004@0001:0000
+   tornado% ./user/rrcmd 10b7:9055@01:0
+   ./user/rrcmd: /dev/rawrabbit: ioctl(DEVSEL): No such device
+   tornado% ./user/rrcmd info
+   /dev/rawrabbit: not bound
+@end example
+
+The ``no such device'' error above depends on the chosen bus:devfn
+paramter.  Please note that trying to bound to a device already driven
+by a kernel driver returns @code{ENODEV} in the same way, as the probe
+function of the PCI driver registered by @i{rawrabbit} will not be
+called.
+
+
+@b{Warning:} read and write are not implemented in this version
+
+To read and write data with @i{rrcmd} you can use the @code{r} and @code{w}
+commands. The syntax of the commands is as follows:
+
+@example
+    r[<sz>] <bar>:<addr>
+    w[<sz>] <bar>:<addr> <val>
+    <sz> = 1, 2, 4, 8 (default = 4)
+    <bar> = 0, 2, 4
+@end example
+
+Actually, since an interactive user often reads and writes the same
+register, the @code{r} and @code{w} commands are the same, and a read
+or write is selected according to the number of arguments. You can think
+of @code{r} as ``register'' and @code{w} as ``word'' if you prefer.
 
 
 @iftex
