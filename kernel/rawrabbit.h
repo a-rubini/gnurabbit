@@ -23,9 +23,11 @@ struct rr_dev {
 	struct rr_devsel	*devsel;
 	struct pci_driver	*pci_driver;
 	struct pci_device_id	*id_table;
-	struct pci_dev		*pdev; /* non-null after probe */
+	struct pci_dev		*pdev;		/* non-null after pciprobe */
 	spinlock_t		 lock;
 	struct completion	 complete;
+	struct resource		*area[3];	/* bar 0, 2, 4 */
+	void			*remap[3];	/* ioremap of bar 0, 2, 4 */
 	int			 usecount;
 	int			 registered;
 };
@@ -55,6 +57,7 @@ struct rr_devsel {
 #define RR_BAR_2		0x20000000
 #define RR_BAR_4		0x40000000
 #define __RR_GET_BAR(x)		((x) >> 28)
+#define __RR_GET_OFF(x)		((x) & 0x0fffffff)
 
 struct rr_iocmd {
 	__u32 address; /* bar and offset */

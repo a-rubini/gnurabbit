@@ -20,6 +20,7 @@
 #include <asm/uaccess.h>
 
 #include "rawrabbit.h"
+#include "compat.h"
 
 static int rr_vendor = RR_DEFAULT_VENDOR;
 static int rr_device = RR_DEFAULT_DEVICE;
@@ -86,9 +87,7 @@ static int rr_fill_table_and_probe(struct rr_dev *dev)
 static int rr_pciprobe (struct pci_dev *pdev, const struct pci_device_id *id)
 {
 	struct rr_dev *dev = &rr_dev;
-	int ret = 0;
-
-	printk("%s\n", __func__);
+	int i;
 
 	/* Only manage one device, refuse further probes */
 	if (dev->pdev)
@@ -104,15 +103,45 @@ static int rr_pciprobe (struct pci_dev *pdev, const struct pci_device_id *id)
 	dev->pdev = pdev;
 	complete(&dev->complete);
 
+	if (0) {	/* Print some information about the bars */
+		int i;
+		struct resource *r;
+
+		for (i = 0; i < 6; i++) {
+			r = pdev->resource + i;
+			printk("%s: resource %i: %llx-%llx (%s) - %08lx\n",
+			       __func__, i,
+			       (long long)r->start,
+			       (long long)r->end,
+			       r->name, r->flags);
+		}
+	}
+
+	/* Record the three bars and possibly remap them */
+	for (i = 0; i < 3; i++) {
+		struct resource *r = pdev->resource + (2 * i);
+		if (!r->start)
+			continue;
+		dev->area[i] = r;
+		if (r->flags & IORESOURCE_MEM)
+			dev->remap[i] = ioremap(r->start,
+						r->end + 1 - r->start);
+	}
+
 	return 0;
 }
 
+/* This function is called when the pcidrv is removed, with lock held */
 static void rr_pciremove(struct pci_dev *pdev)
 {
 	struct rr_dev *dev = &rr_dev;
+	int i;
 
-	/* This function is called when the pcidrv is removed */
-	printk("%s\n", __func__);
+	for (i = 0; i < 3; i++) {
+		iounmap(dev->remap[i]);		/* safe for NULL ptrs */
+		dev->remap[i] = NULL;
+		dev->area[i] = NULL;
+	}
 
 	dev->pdev = NULL;
 }
@@ -131,6 +160,171 @@ static struct rr_dev rr_dev = {
 	.id_table = rr_idtable,
 	.devsel = &rr_devsel,
 };
+
+
+/*
+ * These functions are (inlined) helpers for ioctl
+ */
+static int rr_do_read_mem(struct rr_dev *dev, struct rr_iocmd *iocmd)
+{
+	int bar = __RR_GET_BAR(iocmd->address) / 2;
+	int off = __RR_GET_OFF(iocmd->address);
+
+	switch(iocmd->datasize) {
+	case 1:
+		iocmd->data8 = readb(dev->remap[bar] + off);
+		break;
+	case 2:
+		if (off & 1)
+			return -EIO;
+		iocmd->data16 = readw(dev->remap[bar] + off);
+		break;
+	case 4:
+		if (off & 3)
+			return -EIO;
+		iocmd->data32 = readl(dev->remap[bar] + off);
+		break;
+	case 8:
+		if (off & 7)
+			return -EIO;
+		iocmd->data64 = readq(dev->remap[bar] + off);
+		break;
+	default:
+		return -EINVAL;
+	}
+	return 0;
+}
+
+static int rr_do_write_mem(struct rr_dev *dev, struct rr_iocmd *iocmd)
+{
+	int bar = __RR_GET_BAR(iocmd->address) / 2;
+	int off = __RR_GET_OFF(iocmd->address);
+
+	switch(iocmd->datasize) {
+	case 1:
+		writeb(iocmd->data8, dev->remap[bar] + off);
+		break;
+	case 2:
+		if (off & 1)
+			return -EIO;
+		writew(iocmd->data16, dev->remap[bar] + off);
+		break;
+	case 4:
+		if (off & 3)
+			return -EIO;
+		writel(iocmd->data32, dev->remap[bar] + off);
+		break;
+	case 8:
+		if (off & 7)
+			return -EIO;
+		writeq(iocmd->data64, dev->remap[bar] + off);
+		break;
+	default:
+		return -EINVAL;
+	}
+	return 0;
+}
+
+static int rr_do_read_io(struct rr_dev *dev, struct rr_iocmd *iocmd)
+{
+	int bar = __RR_GET_BAR(iocmd->address) / 2;
+	int off = __RR_GET_OFF(iocmd->address);
+	struct resource *r = dev->area[bar];
+
+	switch(iocmd->datasize) {
+	case 1:
+		iocmd->data8 = inb(r->start + off);
+		break;
+	case 2:
+		if (off & 1)
+			return -EIO;
+		iocmd->data16 = inw(r->start + off);
+		break;
+	case 4:
+		if (off & 3)
+			return -EIO;
+		iocmd->data32 = inl(r->start + off);
+		break;
+	case 8:
+		if (off & 7)
+			return -EIO;
+		/* assume little-endian bus */
+		iocmd->data64 = inl(r->start + off);
+		iocmd->data64 |= (__u64)(inl(r->start + off + 4)) << 32;
+		break;
+	default:
+		return -EINVAL;
+	}
+	return 0;
+}
+
+static int rr_do_write_io(struct rr_dev *dev, struct rr_iocmd *iocmd)
+{
+	int bar = __RR_GET_BAR(iocmd->address) / 2 ;
+	int off = __RR_GET_OFF(iocmd->address);
+	struct resource *r = dev->area[bar];
+
+	switch(iocmd->datasize) {
+	case 1:
+		outb(iocmd->data8,  r->start + off);
+		break;
+	case 2:
+		if (off & 1)
+			return -EIO;
+		outw(iocmd->data16, r->start + off);
+		break;
+	case 4:
+		if (off & 3)
+			return -EIO;
+		outl(iocmd->data32, r->start + off);
+		break;
+	case 8:
+		if (off & 7)
+			return -EIO;
+		/* assume little-endian bus */
+		outl(iocmd->data64, r->start + off);
+		outl(iocmd->data64 >> 32, r->start + off + 4);
+		break;
+	default:
+		return -EINVAL;
+	}
+	return 0;
+}
+
+static int rr_do_iocmd(struct rr_dev *dev, unsigned int cmd,
+		       struct rr_iocmd *iocmd)
+{
+	int bar;
+	unsigned off;
+	struct resource *r;
+
+	bar = __RR_GET_BAR(iocmd->address);
+	off = __RR_GET_OFF(iocmd->address);
+
+	if (bar != 0 && bar != 2 && bar != 4)
+		return -EINVAL;
+
+	bar /= 2;			/* use 0,1,2 as index */
+	r = dev->area[bar];
+
+	if (!r)
+		return -ENODEV;
+
+	if (likely(r->flags & IORESOURCE_MEM)) {
+		if (cmd == RR_READ)
+			return rr_do_read_mem(dev, iocmd);
+		else
+			return rr_do_write_mem(dev, iocmd);
+	}
+	if (likely(r->flags & IORESOURCE_IO)) {
+		if (cmd == RR_READ)
+			return rr_do_read_io(dev, iocmd);
+		else
+			return rr_do_write_io(dev, iocmd);
+	}
+	return -EIO;
+}
+
 
 /*
  * The ioctl method is the one used for strange stuff (see docs)
@@ -210,6 +404,11 @@ static long rr_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 		karg.devsel.bus = dev->pdev->bus->number;
 		karg.devsel.devfn = dev->pdev->devfn;
 		spin_unlock(&dev->lock);
+		break;
+
+	case RR_READ:	/* Read a "word" of memory */
+	case RR_WRITE:	/* Write a "word" of memory */
+		ret = rr_do_iocmd(dev, cmd, &karg.iocmd);
 		break;
 
 	default:
