@@ -26,13 +26,20 @@ s/È/@`E/g
 s/ù/@`u/g
 
 
-#preserve blanks and braces in @example blocks
+#preserve blanks, braces and @ in @example and @smallexample blocks
 /@example/,/@end example/ s/{/@{/g
 /@example/,/@end example/ s/}/@}/g
+/@example/,/@end example/ s/@/@@/g
+s/^@@example/@example/
+s/^@@end/@end/
 /@example/,/@end example/ p
 /@example/,/@end example/ d
+
 /@smallexample/,/@end smallexample/ s/{/@{/g
 /@smallexample/,/@end smallexample/ s/}/@}/g
+/@smallexample/,/@end smallexample/ s/@/@@/g
+s/^@@smallexample/@smallexample/
+s/^@@end/@end/
 /@smallexample/,/@end smallexample/ p
 /@smallexample/,/@end smallexample/ d
 
