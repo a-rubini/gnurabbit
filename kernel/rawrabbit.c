@@ -44,7 +44,6 @@ irqreturn_t rr_interrupt(int irq, void *devid)
 	disable_irq_nosync(irq);
 	spin_unlock(&dev->lock);
 	wake_up_interruptible(&dev->q);
-	printk("%s - irq %i\n", __func__, irq);
 	return IRQ_HANDLED;
 }
 
