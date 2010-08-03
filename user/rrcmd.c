@@ -74,14 +74,96 @@ int parse_devsel(int fd, char *arg)
 		return -EIO;
 	}
 
-
 	return 0;
 }
 
+int do_iocmd(int fd, char *cmdname, char *addr, char *datum)
+{
+	char rest[32];
+	struct rr_iocmd iocmd;
+	int i, ret;
+	unsigned bar;
+	__u64 d;
+	char cmd;
+
+	if (strlen(cmdname) >= sizeof(rest))
+		return -EINVAL;
+	if (strlen(addr) >= sizeof(rest))
+		return -EINVAL;
+	if (datum && strlen(addr) >= sizeof(rest))
+		return -EINVAL;
+
+	/* parse command and size */
+	i = sscanf(cmdname, "%c%i%s\n", &cmd, &iocmd.datasize, rest);
+	if (cmd != 'r' && cmd != 'w')
+		return -EINVAL;
+	if (i == 3)
+		return -EINVAL;
+	if (i == 1)
+		iocmd.datasize = 4;
+
+	/* parse address */
+	i = sscanf(addr, "%x:%x%s", &bar, &iocmd.address, rest);
+	if (i != 2)
+		return -EINVAL;
+	if (bar > 4 || bar & 1)
+		return -EINVAL;
+	iocmd.address |= __RR_SET_BAR(bar);
+
+	/* parse datum */
+	if (datum) {
+		i = sscanf(datum, "%llx%s", &d, rest);
+		if (i == 2)
+			return -EINVAL;
+		switch(iocmd.datasize) {
+		case 1:
+			iocmd.data8 = d;
+			break;
+		case 2:
+			iocmd.data16 = d;
+			break;
+		case 4:
+			iocmd.data32 = d;
+			break;
+		case 8:
+			iocmd.data64 = d;
+			break;
+		default:
+			return -EINVAL;
+		}
+	}
+
+	if (datum)
+		ret = ioctl(fd, RR_WRITE, &iocmd);
+	else
+		ret = ioctl(fd, RR_READ, &iocmd);
+
+	if (ret < 0)
+		return -errno;
+
+	if (!datum && !ret) {
+		switch(iocmd.datasize) {
+		case 1:
+			printf("0x%02x\n", (unsigned int)iocmd.data8);
+			break;
+		case 2:
+			printf("0x%04x\n", (unsigned int)iocmd.data16);
+			break;
+		case 4:
+			printf("0x%08lx\n", (unsigned long)iocmd.data32);
+			break;
+		case 8:
+			printf("0x%016llx\n", (unsigned long long)iocmd.data64);
+			break;
+		default:
+			return -EINVAL;
+		}
+	}
+	return ret;
+}
 int main(int argc, char **argv)
 {
 	struct rr_devsel devsel;
-	struct rr_iocmd iocmd;
 	int fd, ret = -EINVAL;
 
 	prgname = argv[0];
@@ -116,8 +198,11 @@ int main(int argc, char **argv)
 		       devsel.subvendor, devsel.subdevice,
 		       devsel.bus, devsel.devfn);
 		ret = 0;
+	} else if (argc == 3 || argc == 4) {
+		ret = do_iocmd(fd, argv[1], argv[2], argv[3] /* may be NULL */);
+	} else if (argc > 4) {
+		ret = -EINVAL;
 	}
-
 
 	/* subroutines return "invalid argument" to ask for help */
 	if (ret == -EINVAL)
