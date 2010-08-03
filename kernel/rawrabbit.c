@@ -581,8 +581,6 @@ static long rr_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 				       page_to_pfn(vmalloc_to_page(addr)));
 			}
 			__put_user(page_to_pfn(vmalloc_to_page(addr)), uptr);
-			printk("put %lx -> %p\n",
-			       page_to_pfn(vmalloc_to_page(addr)), uptr);
 			uptr++;
 		}
 		return 0;
