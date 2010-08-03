@@ -61,7 +61,7 @@
 
 This package includes a device driver for the GN4124 PCI-E board and a
 module for raw PCI I/O, used at CERN as development tool to help
-protopyping White Rabbit hardware and software.
+prototyping White Rabbit hardware and software.
 
 @menu
 * Driver for GN4124::           
@@ -81,7 +81,7 @@ Still to be done, I'm sorry. Stay tuned.
 The kernel module for raw I/O is called @i{rawrabbit}. After
 running @i{make} you'll find a file called @code{rawrabbit.ko}.
 
-To compile you may optionally set the forllowing three variables in
+To compile you may optionally set the following three variables in
 your environment:
 
 @table @code
@@ -155,7 +155,7 @@ In the source file, each global function or variable declared in the
 file itself has @code{rr_} as prefix in the name, even if its scope is
 static. Local variables have simple names with no prefix, like @code{i}
 or @code{dev}.  This convention is followed so when reading
-random parts of the source you can immediately know wheterh the symbol
+random parts of the source you can immediately know whether the symbol
 is defined in the same file (like @code{rr_dev}) or is an external Linux
 resource (like @code{pci_driver}).
 
@@ -224,7 +224,7 @@ The following system calls are implemented in @i{rawrabbit}:
         I/O space.  The file position (set through @i{llseek} or by
         sequential access of file data) is used to specify both the BAR
         and the offset within the BAR as described above. Access to
-        an unexistent BAR returns @code{EINVAL}, access outside the BAR
+        an inexistent BAR returns @code{EINVAL}, access outside the BAR
         size returns @code{EIO}.
 
 @item mmap
@@ -243,8 +243,8 @@ The following system calls are implemented in @i{rawrabbit}:
 @node Ioctl commands, User space demo programs, System calls implemented, Raw PCI I/O
 @section Ioctl commands
 
-The followingg @i{ioctl} commands are currently implemented. The type
-of the third argument is shown in parenteses after each command:
+The following @i{ioctl} commands are currently implemented. The type
+of the third argument is shown in parentheses after each command:
 
 @table @code
 
@@ -312,7 +312,7 @@ device and an ethernet port without active driver.
 @end example
 
 The ``no such device'' error above depends on the chosen bus:devfn
-paramter.  Please note that trying to bound to a device already driven
+parameter.  Please note that trying to bound to a device already driven
 by a kernel driver returns @code{ENODEV} in the same way, as the probe
 function of the PCI driver registered by @i{rawrabbit} will not be
 called.
