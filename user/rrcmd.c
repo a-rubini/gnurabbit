@@ -223,8 +223,11 @@ int main(int argc, char **argv)
 	/* subroutines return "invalid argument" to ask for help */
 	if (ret == -EINVAL)
 		help();
-	if (ret)
+	if (ret) {
+		fprintf(stderr, "%s: command returned \"%s\"\n", prgname,
+			strerror(errno));
 		exit(1);
+	}
 
 	return 0;
 }
