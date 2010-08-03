@@ -208,7 +208,7 @@ int main(int argc, char **argv)
 	} else if (argc > 1 && !strcmp(argv[1], "irqena")) {
 		ret = ioctl(fd, RR_IRQENA);
 		if (ret < 0) {
-			fprintf(stderr, "%s: ioctl(IRQWAIT): %s\n", argv[0],
+			fprintf(stderr, "%s: ioctl(IRQENA): %s\n", argv[0],
 				strerror(errno));
 		} else {
 			printf("delay: %i ns\n", ret);
