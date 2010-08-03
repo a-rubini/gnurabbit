@@ -16,4 +16,4 @@ ALL = ioctl irq878
 all: $(ALL)
 
 clean:
-	rm $(ALL) *.o *~
+	rm -f $(ALL) *.o *~

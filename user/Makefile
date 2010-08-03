@@ -16,4 +16,4 @@ ALL = rrcmd
 all: $(ALL)
 
 clean:
-	rm $(ALL) *.o *~
+	rm -f $(ALL) *.o *~
