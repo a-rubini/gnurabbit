@@ -105,6 +105,7 @@ number or switch to several devices, I'm yet undecided on this choice.
 
 @menu
 * General features of rawrabbit::  
+* Interrupt management::        
 * Bugs and misfeatures::        
 * System calls implemented::    
 * Ioctl commands::              
@@ -113,8 +114,8 @@ number or switch to several devices, I'm yet undecided on this choice.
 @end menu
 
 @c ==========================================================================
-@node General features of rawrabbit, Bugs and misfeatures, Raw PCI I/O, Raw PCI I/O
-@section  General features of rawrabbit
+@node General features of rawrabbit, Interrupt management, Raw PCI I/O, Raw PCI I/O
+@section General features of rawrabbit
 
 The driver is designed to act as a misc device (i.e. a char device)
 towards user programs and as a PCI driver towards hardware, declaring
@@ -145,11 +146,10 @@ currently selected by means of the vendor/device pair as well as
 bus/devfn and/or subvendor/subdevice if specified.
 
 The driver allows access to the PCI memory regions for generic I/O
-operations. Future versions will provide for DMA (buffer allocation
-and deallocation, as well as direct I/O to the buffer) and interrupt
-handling in user space.
+operations, as well as some limited interrupt management in user space.
+Future versions will provide for DMA (buffer allocation
+and deallocation, as well as direct I/O to the buffer).
 @c FIXME: dma access
-@c FIXME: interrupt access
 
 In the source file, each global function or variable declared in the
 file itself has @code{rr_} as prefix in the name, even if its scope is
@@ -160,7 +160,30 @@ is defined in the same file (like @code{rr_dev}) or is an external Linux
 resource (like @code{pci_driver}).
 
 @c ==========================================================================
-@node Bugs and misfeatures, System calls implemented, General features of rawrabbit, Raw PCI I/O
+@node Interrupt management, Bugs and misfeatures, General features of rawrabbit, Raw PCI I/O
+@section Interrupt management
+
+The driver is able to handle the interrupt for the active device. User
+space is allowed to wait for an interrupt and acknowledge it later at its
+will.  To allow this latency, the driver disables the interrupt as soon as
+it is reported, so user-space can do the board-specific I/O before it
+asks to enable the interrupt.
+
+The interrupt handler is registered as a shared handler, as most PCI
+cards must share the interrupt request line with other peripherals. In
+particular, on my development motherboard both the PCI-E and the PCI
+slot share the interrupt with other core peripherals and I couldn't test
+stuff if I didn't enable sharing.
+
+Unfortunately, @i{rawrabbit} can't know if the interrupt source is its
+own board or another peripherals, so all it can do is saying it
+handled to the interrupt (by returning @code{IRQ_HANDLED}) and disable
+it.  If you are running other peripherals on the same interrupt line,
+you'll need to acknowledge the interrupt pretty often, to avoid a
+system lock or data loss in your storage or network device.
+
+@c ==========================================================================
+@node Bugs and misfeatures, System calls implemented, Interrupt management, Raw PCI I/O
 @section Bugs and misfeatures
 
 @c FIXME: single open
@@ -177,12 +200,6 @@ the driver uses @i{copy_from_user} and @i{copy_to_user}.
 
 @c FIXME: dma
 No DMA support is currently implemented (no buffer management exists)
-
-@c FIXME: interrupt
-No interrupt support is available.  I plan to implement interrupt
-support by means of @i{ioctl} commands and a blocking read/poll interface.
-The driver would disable the interrupt in the controller until user
-space notifies the driver that it is done handling it.
 
 @c FIXME: odd bars
 The driver assumes to work with PCI-E so odd BAR areas are not supported.
@@ -262,6 +279,33 @@ of the third argument is shown in parentheses after each command:
 	The command returns to user space device information: vendor/device,
         subvendor/subdevice and bus/devfn. If no device is currently
         managed by the driver, @code{ENODEV} is returned.
+
+@item RR_READ (struct rr_iocmd *)
+@itemx RR_WRITE (struct rr_iocmd *)
+
+	The commands can read or write one register from an even BAR
+        area (BAR 0, 2, 4).  The @code{address} field of the structure
+        specifies both the BAR and the offset (see @code{rawrabbit.h} or
+        the description of @i{llseek} above for the details).
+        The @code{datasize} field can be 1, 2, 4 or 8 and is a byte count.
+        The other fields, @code{data8} through @code{data64} are used to
+        host the register value; these fields are collapsed together in an
+        unnamed union (see the @i{gcc} documentation about unnamed unions).
+
+@item RR_IRQWAIT (no third argument)
+
+	The command waits for an interrupt to happen on the device. If an
+        interrupt did already happen, @code{EAGAIN} is returned, otherwise
+        an interrupt is waited for and 0 is returned. After the interrupt
+        fired, the interrupt line is disabled. Please note that this may
+        be a serious problem if the line is shared with other peripherals,
+        like your hard drive o ethernet card.
+
+@item RR_IRQENA (no third argument)
+
+	The command re-enables the interrupt. The user is assumed to have
+        acknowledged the interrupt in the board itself, or another interrupt
+        will immediately fire.
 
 @end table
 
@@ -360,6 +404,32 @@ of hex digits, to stress the data size that has been read:
    0x00003000
    tornado% ./user/rrcmd r8 4:a08
    0x0000000000003000
+@end example
+
+Interrupt management with @i{rrcmd} can be performed using two
+commands: @code{irqwait} and @code{irqena}. The former is used to wait
+for an interrupt to happen; the latter re-enables the interrupt in the
+controller. You should probably acknowledge the interrupt in the device
+between these two operations.  The @code{irqwait} command can return
+@code{EAGAIN} if the interrupt has already happened; the @code{irqena}
+command can return @code{EAGAIN} if the interrupt has not happened
+yet.
+
+For example, this script waits for an interrupt in a BT878 frame
+grabber and acknowledges it for 100 times:
+
+@example
+   # select device and enable vsync interrupt (bit 1, value 0x2)
+   ./user/rrcmd 109e:036e w 0:104 2
+   # now wait for irq, acknowledging bit 1 for vsync
+   for n in $(seq 1 100); do
+      ./user/rrcmd irqwait
+      ./user/rrcmd w 0:100 2
+      ./user/rrcmd irqena
+   done
+   # finally, disable the interrupt in the device and enable in the controller
+   ./user/rrcmd w 0:104 0
+   ./user/rrcmd irqena
 @end example
 
 @c ==========================================================================
