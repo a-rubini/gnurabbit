@@ -109,6 +109,7 @@ number or switch to several devices, I'm yet undecided on this choice.
 * System calls implemented::    
 * Ioctl commands::              
 * User space demo programs::    
+* User space benchmarks::       
 @end menu
 
 @c ==========================================================================
@@ -265,7 +266,7 @@ of the third argument is shown in parenteses after each command:
 @end table
 
 @c ==========================================================================
-@node User space demo programs,  , Ioctl commands, Raw PCI I/O
+@node User space demo programs, User space benchmarks, Ioctl commands, Raw PCI I/O
 @section User space demo programs
 
 The subdirectory @code{user/} of this package includes the user-space
@@ -359,6 +360,40 @@ of hex digits, to stress the data size that has been read:
    0x00003000
    tornado% ./user/rrcmd r8 4:a08
    0x0000000000003000
+@end example
+
+@c ==========================================================================
+@node User space benchmarks,  , User space demo programs, Raw PCI I/O
+@section User space benchmarks
+
+The package includes a few trivial programs used to benchmark performance
+of the various I/O primitives.
+
+@menu
+* bench/ioctl::                 
+@end menu
+
+@c --------------------------------------------------------------------------
+@node bench/ioctl,  , User space benchmarks, User space benchmarks
+@subsection bench/ioctl
+
+The program tests how many ioctl output operations can be performed
+per second. It issues a number of register writes assuming the driver
+is currently accessing the Gennum evaluation board.
+
+The data written makes the 4 GPIO leds blink with different duty
+cycles, so you should see them lit at different light levels.
+
+On my system, the program reports more than 3 million operations per
+second:
+
+@example
+    tornado% ./bench/ioctl 1000000
+    1000000 ioctls in 303611 usecs
+    3293688 ioctls per second
+    tornado% ./bench/ioctl 10000000
+    10000000 ioctls in 3068384 usecs
+    3259044 ioctls per second
 @end example
 
 @iftex
