@@ -13,6 +13,7 @@
 #include <string.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <stdint.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/ioctl.h>
@@ -30,6 +31,8 @@ void help(void)
 	fprintf(stderr, "   <cmd> = info\n");
 	fprintf(stderr, "   <cmd> = irqwait\n");
 	fprintf(stderr, "   <cmd> = irqena\n");
+	fprintf(stderr, "   <cmd> = getdmasize\n");
+	fprintf(stderr, "   <cmd> = getplist\n");
 	fprintf(stderr, "   <cmd> = r[<sz>] <bar>:<addr>\n");
 	fprintf(stderr, "   <cmd> = w[<sz>] <bar>:<addr> <val>\n");
 	fprintf(stderr, "      <sz> = 1, 2, 4, 8 (default = 4)\n");
@@ -163,6 +166,27 @@ int do_iocmd(int fd, char *cmdname, char *addr, char *datum)
 	}
 	return ret;
 }
+
+int do_getplist(int fd)
+{
+	uintptr_t plist[RR_PLIST_LEN];
+	int i, size;
+
+	size = ioctl(fd, RR_GETDMASIZE);
+	if (size < 0)
+		return -errno;
+	i = ioctl(fd, RR_GETPLIST, plist);
+	if (i < 0)
+		return -errno;
+
+	for (i = 0; i < size/RR_PLIST_SIZE; i++)
+		printf("buf 0x%08x: pfn 0x%08x, addr 0x%012llx\n",
+		       i * RR_PLIST_SIZE, plist[i],
+		       (unsigned long long)plist[i] << 12);
+	return 0;
+}
+
+
 int main(int argc, char **argv)
 {
 	struct rr_devsel devsel;
@@ -214,6 +238,13 @@ int main(int argc, char **argv)
 			printf("delay: %i ns\n", ret);
 			ret = 0;
 		}
+	} else if (argc > 1 && !strcmp(argv[1], "getdmasize")) {
+		ret = ioctl(fd, RR_GETDMASIZE);
+		printf("dmasize: %i (0x%x -- %g MB)\n", ret, ret,
+		       ret / (double)(1024*1024));
+		ret = 0;
+	} else if (argc > 1 && !strcmp(argv[1], "getplist")) {
+		ret = do_getplist(fd);
 	} else if (argc == 3 || argc == 4) {
 		ret = do_iocmd(fd, argv[1], argv[2], argv[3] /* may be NULL */);
 	} else if (argc > 4) {
