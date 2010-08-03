@@ -11,11 +11,14 @@
 #include <linux/moduleparam.h>
 #include <linux/spinlock.h>
 #include <linux/kernel.h>
+#include <linux/sched.h>
+#include <linux/wait.h>
 #include <linux/init.h>
 #include <linux/pci.h>
 #include <linux/fs.h>
 #include <linux/miscdevice.h>
 #include <linux/completion.h>
+#include <linux/interrupt.h>
 #include <linux/ioctl.h>
 #include <asm/uaccess.h>
 
@@ -28,6 +31,22 @@ module_param_named(vendor, rr_vendor, int, 0);
 module_param_named(device, rr_device, int, 0);
 
 static struct rr_dev rr_dev; /* defined later */
+
+/* Interrupt handler: just disable the interrupt in the controller */
+irqreturn_t rr_interrupt(int irq, void *devid)
+{
+	struct rr_dev *dev = devid;
+
+	spin_lock(&dev->lock);
+	getnstimeofday(&dev->irqtime);
+	dev->irqcount++;
+	dev->flags |= RR_FLAG_IRQDISABLE;
+	disable_irq_nosync(irq);
+	spin_unlock(&dev->lock);
+	wake_up_interruptible(&dev->q);
+	printk("%s - irq %i\n", __func__, irq);
+	return IRQ_HANDLED;
+}
 
 /*
  * We have a PCI driver, used to access the BAR areas.
@@ -54,9 +73,9 @@ static int rr_fill_table_and_probe(struct rr_dev *dev)
 	int ret;
 
 	spin_lock(&dev->lock);
-	if (dev->registered) {
+	if (dev->flags & RR_FLAG_REGISTERED) {
 		pci_unregister_driver(dev->pci_driver);
-		dev->registered = 0;
+		dev->flags &= ~ RR_FLAG_REGISTERED;
 	}
 	spin_unlock(&dev->lock);
 
@@ -67,7 +86,7 @@ static int rr_fill_table_and_probe(struct rr_dev *dev)
 	init_completion(&dev->complete);
 	ret = pci_register_driver(dev->pci_driver);
 	if (ret == 0)
-		dev->registered = 1;
+		dev->flags |= RR_FLAG_REGISTERED;
 	spin_unlock(&dev->lock);
 
 	if (ret < 0) {
@@ -99,8 +118,24 @@ static int rr_pciprobe (struct pci_dev *pdev, const struct pci_device_id *id)
 		if (dev->devsel->devfn != pdev->devfn)
 			return -ENODEV;
 	}
+	i = pci_enable_device(pdev);
+	if (i < 0)
+	    return i;
 
 	dev->pdev = pdev;
+
+	/* FIXME: how to know if irq is valid? */
+	if (pdev->irq > 0) {
+		i = request_irq(pdev->irq, rr_interrupt, IRQF_SHARED,
+				"rawrabbit", dev);
+		if (i < 0) {
+			printk("%s: can't request irq %i, error %i\n", __func__,
+			       pdev->irq, i);
+		} else {
+			dev->flags |= RR_FLAG_IRQREQUEST;
+		}
+	}
+
 	complete(&dev->complete);
 
 	if (0) {	/* Print some information about the bars */
@@ -137,6 +172,15 @@ static void rr_pciremove(struct pci_dev *pdev)
 	struct rr_dev *dev = &rr_dev;
 	int i;
 
+	if (dev->flags & RR_FLAG_IRQREQUEST) {
+		free_irq(pdev->irq, dev);
+		dev->flags &= ~RR_FLAG_IRQREQUEST;
+		/* Also, reenable it, just in case we are shared.*/
+		if (dev->flags & RR_FLAG_IRQDISABLE) {
+			dev->flags &= ~RR_FLAG_IRQDISABLE;
+			enable_irq(dev->pdev->irq);
+		}
+	}
 	for (i = 0; i < 3; i++) {
 		iounmap(dev->remap[i]);		/* safe for NULL ptrs */
 		dev->remap[i] = NULL;
@@ -158,6 +202,7 @@ static struct rr_devsel rr_devsel;
 static struct rr_dev rr_dev = {
 	.pci_driver = &rr_pcidrv,
 	.id_table = rr_idtable,
+	.q = __WAIT_QUEUE_HEAD_INITIALIZER(rr_dev.q),
 	.devsel = &rr_devsel,
 };
 
@@ -334,6 +379,8 @@ static long rr_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 	struct rr_dev *dev = f->private_data;
 	int size = _IOC_SIZE(cmd); /* the size bitfield in cmd */
 	int ret = 0;
+	unsigned long count;
+	struct timespec tv, tvirq;
 
 	/* local copies: use a union to save stack space */
 	union {
@@ -410,6 +457,41 @@ static long rr_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 	case RR_WRITE:	/* Write a "word" of memory */
 		ret = rr_do_iocmd(dev, cmd, &karg.iocmd);
 		break;
+
+	case RR_IRQWAIT: /* Wait for an interrupt to happen */
+		spin_lock_irq(&dev->lock);
+		count = dev->irqcount;
+		if (dev->flags & RR_FLAG_IRQDISABLE)
+			ret = -EAGAIN; /* already happened */
+		spin_unlock_irq(&dev->lock);
+		if (ret < 0)
+			return ret;
+		wait_event_interruptible(dev->q, count != dev->irqcount);
+		if (signal_pending(current))
+			return -ERESTARTSYS;
+		return 0;
+
+	case RR_IRQENA:	/* Re-enable the interrupt after handling it */
+		spin_lock_irq(&dev->lock);
+		getnstimeofday(&tv);
+		tvirq = dev->irqtime;
+		if ( !(dev->flags & RR_FLAG_IRQDISABLE)) {
+			ret = -EAGAIN;
+		} else {
+			dev->flags &= ~RR_FLAG_IRQDISABLE;
+			enable_irq(dev->pdev->irq);
+		}
+		spin_unlock_irq(&dev->lock);
+		if (ret < 0)
+			return ret;
+		/* return the delay to user space, capped at 1s */
+		if (tv.tv_sec - tvirq.tv_sec > 1)
+			return NSEC_PER_SEC;
+		ret = (tv.tv_sec - tvirq.tv_sec) * NSEC_PER_SEC
+			+ tv.tv_nsec - tvirq.tv_nsec;
+		if (ret > NSEC_PER_SEC)
+			return NSEC_PER_SEC;
+		return ret;
 
 	default:
 		return -ENOIOCTLCMD;

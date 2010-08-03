@@ -28,6 +28,8 @@ void help(void)
 		"   %s [<vendor:device>[/<subvendor>:<subdev>]"
 		"[@<bus>:<devfn>]] <cmd>\n", prgname, prgname);
 	fprintf(stderr, "   <cmd> = info\n");
+	fprintf(stderr, "   <cmd> = irqwait\n");
+	fprintf(stderr, "   <cmd> = irqena\n");
 	fprintf(stderr, "   <cmd> = r[<sz>] <bar>:<addr>\n");
 	fprintf(stderr, "   <cmd> = w[<sz>] <bar>:<addr> <val>\n");
 	fprintf(stderr, "      <sz> = 1, 2, 4, 8 (default = 4)\n");
@@ -198,6 +200,20 @@ int main(int argc, char **argv)
 		       devsel.subvendor, devsel.subdevice,
 		       devsel.bus, devsel.devfn);
 		ret = 0;
+	} else if (argc > 1 && !strcmp(argv[1], "irqwait")) {
+		ret = ioctl(fd, RR_IRQWAIT);
+		if (ret < 0)
+			fprintf(stderr, "%s: ioctl(IRQWAIT): %s\n", argv[0],
+				strerror(errno));
+	} else if (argc > 1 && !strcmp(argv[1], "irqena")) {
+		ret = ioctl(fd, RR_IRQENA);
+		if (ret < 0) {
+			fprintf(stderr, "%s: ioctl(IRQWAIT): %s\n", argv[0],
+				strerror(errno));
+		} else {
+			printf("delay: %i ns\n", ret);
+			ret = 0;
+		}
 	} else if (argc == 3 || argc == 4) {
 		ret = do_iocmd(fd, argv[1], argv[2], argv[3] /* may be NULL */);
 	} else if (argc > 4) {

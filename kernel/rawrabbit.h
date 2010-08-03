@@ -16,6 +16,7 @@
 #include <linux/pci.h>
 #include <linux/spinlock.h>
 #include <linux/completion.h>
+#include <linux/wait.h>
 
 struct rr_devsel;
 
@@ -25,12 +26,20 @@ struct rr_dev {
 	struct pci_device_id	*id_table;
 	struct pci_dev		*pdev;		/* non-null after pciprobe */
 	spinlock_t		 lock;
+	wait_queue_head_t	 q;
+	struct timespec		 irqtime;
+	unsigned long		 irqcount;
 	struct completion	 complete;
 	struct resource		*area[3];	/* bar 0, 2, 4 */
 	void			*remap[3];	/* ioremap of bar 0, 2, 4 */
+	unsigned long		 flags;
 	int			 usecount;
-	int			 registered;
 };
+
+#define RR_FLAG_REGISTERED	0x00000001
+#define RR_FLAG_IRQDISABLE	0x00000002
+#define RR_FLAG_IRQREQUEST	0x00000002
+
 
 #define RR_PROBE_TIMEOUT	(HZ/10)		/* for pci_register_drv */
 
@@ -78,6 +87,8 @@ struct rr_iocmd {
 #define RR_DEVGET	 _IOR(__RR_IOC_MAGIC, 1, struct rr_devsel)
 #define RR_READ		_IOWR(__RR_IOC_MAGIC, 2, struct rr_iocmd)
 #define RR_WRITE	 _IOW(__RR_IOC_MAGIC, 3, struct rr_iocmd)
+#define RR_IRQWAIT	  _IO(__RR_IOC_MAGIC, 4)
+#define RR_IRQENA	  _IO(__RR_IOC_MAGIC, 5)
 
 #define VFAT_IOCTL_READDIR_BOTH         _IOR('r', 1, struct dirent [2])
 
