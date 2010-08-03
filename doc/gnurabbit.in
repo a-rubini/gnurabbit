@@ -198,6 +198,12 @@ time forces 8, 16, 32, 64 bit accesses respectively, while bigger
 transfers use unpredictable access patterns to I/O memory, as
 the driver uses @i{copy_from_user} and @i{copy_to_user}.
 
+@c FIXME: interrupt is always requested
+The interrupt line is always requested, and handled. This means that if
+the line is shared with other devices, you can't avoid it being disabled
+thus breaking the other devices.  A specific ioctl to request/release the
+handler is needed.
+
 @c FIXME: dma
 No DMA support is currently implemented (no buffer management exists)
 
