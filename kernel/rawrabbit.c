@@ -358,7 +358,45 @@ static int rr_do_write_io(struct rr_dev *dev, struct rr_iocmd *iocmd)
 static int rr_do_iocmd_dmabuf(struct rr_dev *dev, unsigned int cmd,
 		       struct rr_iocmd *iocmd)
 {
-	return -EIO; /* FIXME: not implemented */
+	int off = __RR_GET_OFF(iocmd->address);
+	if (off >= rr_bufsize)
+		return -ENOMEDIUM;
+
+	switch(iocmd->datasize) {
+	case 1:
+		if (cmd == RR_WRITE)
+			*(u8 *)(dev->dmabuf + off) = iocmd->data8;
+		else
+			iocmd->data8 = *(u8 *)(dev->dmabuf + off);
+		break;
+	case 2:
+		if (off & 1)
+			return -EIO;
+		if (cmd == RR_WRITE)
+			*(u16 *)(dev->dmabuf + off) = iocmd->data16;
+		else
+			iocmd->data16 = *(u16 *)(dev->dmabuf + off);
+		break;
+	case 4:
+		if (off & 3)
+			return -EIO;
+		if (cmd == RR_WRITE)
+			*(u32 *)(dev->dmabuf + off) = iocmd->data32;
+		else
+			iocmd->data32 = *(u32 *)(dev->dmabuf + off);
+		break;
+	case 8:
+		if (off & 7)
+			return -EIO;
+		if (cmd == RR_WRITE)
+			*(u64 *)(dev->dmabuf + off) = iocmd->data64;
+		else
+			iocmd->data64 = *(u64 *)(dev->dmabuf + off);
+		break;
+	default:
+		return -EINVAL;
+	}
+	return 0;
 }
 
 static int rr_do_iocmd(struct rr_dev *dev, unsigned int cmd,
