@@ -40,7 +40,7 @@
 
 @setchapternewpage off
 
-@set update-month July 2010
+@set update-month August 2010
 
 @finalout
 
@@ -62,6 +62,9 @@
 This package includes a device driver for the GN4124 PCI-E board and a
 module for raw PCI I/O, used at CERN as development tool to help
 prototyping White Rabbit hardware and software.
+
+All code and documentation is released according to the GNU GPL, version
+2 or (at your option) any later version.
 
 @menu
 * Driver for GN4124::           
@@ -96,6 +99,11 @@ your environment:
         system).
 @end table
 
+The code has been run-tested on version 2.6.34, and compile-tested on
+2.6.24.7-rt27 and 2.6.31.6-rt19
+@c FIXME 2.6.29.4-rt15
+@c FIXME 2.6.31.12-rt21
+
 The module creates a @i{misc} char device driver, with major number 10
 and minor number 42.  If you are running @i{udev} the special file
 @code{/dev/rawrabbit} will be created automatically.
@@ -107,6 +115,7 @@ number or switch to several devices, I'm yet undecided on this choice.
 * General features of rawrabbit::  
 * Interrupt management::        
 * Bugs and misfeatures::        
+* The DMA buffer::              
 * System calls implemented::    
 * Ioctl commands::              
 * User space demo programs::    
@@ -123,9 +132,10 @@ the pair @i{vendor}/@i{device} it is able to drive.
 
 The pair of identifiers is predefined at compile time but can be changed
 at run time. The defaults (set forth in @code{rawrabbit.h} refer to
-GN4124 evaluation board.  The values can also be changed at module
+the GN4124 evaluation board.  The values can also be changed at module
 load time by setting the @code{vendor} and @code{device} arguments.
-For example this sets @i{rawrabbit} to look for a 3com Ethernet device:
+For example the following command
+sets @i{rawrabbit} to look for a 3com Ethernet device:
 
 @example
     insmod rawrabbit.ko vendor=0x10b7 device=0x9055
@@ -133,26 +143,28 @@ For example this sets @i{rawrabbit} to look for a 3com Ethernet device:
 
 When the driver is loaded it registers as a PCI driver for the
 preselected vendor/device pair, but loading succeeds even if no
-matching board exists on the system, as user space programs can
+matching peripheral exists on the system, as user space programs can
 request a different vendor/device pair at runtime.  Since a single bus
 might host several instances of the same peripheral, user space
 programs can also specify the @i{bus} and @i{devfn} values in order to
 select a specific instance of the hardware device. Similarly, the pair
 @i{subvendor}/@i{subdevice} may be specified.
 
+@c FIXME: read, write, mmap
 User programs can use @i{read} and @i{write}, @i{mmap} and @i{ioctl}
-as described later.  Each and every command refers to the device
+as described later (@b{Note:} read, write and mmap are not currently
+supported).  Each and every command refers to the device
 currently selected by means of the vendor/device pair as well as
 bus/devfn and/or subvendor/subdevice if specified.
 
 The driver allows access to the PCI memory regions for generic I/O
 operations, as well as some limited interrupt management in user space.
-Future versions will provide for DMA (buffer allocation
-and deallocation, as well as direct I/O to the buffer).
-@c FIXME: dma access
+Programs can also access a DMA buffer, for which they can know the
+physical address on a page-by-page basis.
 
 In the source file, each global function or variable declared in the
-file itself has @code{rr_} as prefix in the name, even if its scope is
+file itself or in the associated header
+has @code{rr_} as prefix in the name, even if its scope is
 static. Local variables have simple names with no prefix, like @code{i}
 or @code{dev}.  This convention is followed so when reading
 random parts of the source you can immediately know whether the symbol
@@ -164,10 +176,10 @@ resource (like @code{pci_driver}).
 @section Interrupt management
 
 The driver is able to handle the interrupt for the active device. User
-space is allowed to wait for an interrupt and acknowledge it later at its
+space is allowed to wait for an interrupt and acknowledge it later at
 will.  To allow this latency, the driver disables the interrupt as soon as
-it is reported, so user-space can do the board-specific I/O before it
-asks to enable the interrupt.
+it is reported, so user-space can do the board-specific I/O before asking
+to re-enable the interrupt.
 
 The interrupt handler is registered as a shared handler, as most PCI
 cards must share the interrupt request line with other peripherals. In
@@ -175,7 +187,8 @@ particular, on my development motherboard both the PCI-E and the PCI
 slot share the interrupt with other core peripherals and I couldn't test
 stuff if I didn't enable sharing.
 
-Unfortunately, @i{rawrabbit} can't know if the interrupt source is its
+Unfortunately, the @i{rawrabbit} interrupt handler
+can't know if the interrupt source is its
 own board or another peripherals, so all it can do is saying it
 handled to the interrupt (by returning @code{IRQ_HANDLED}) and disable
 it.  If you are running other peripherals on the same interrupt line,
@@ -183,7 +196,7 @@ you'll need to acknowledge the interrupt pretty often, to avoid a
 system lock or data loss in your storage or network device.
 
 @c ==========================================================================
-@node Bugs and misfeatures, System calls implemented, Interrupt management, Raw PCI I/O
+@node Bugs and misfeatures, The DMA buffer, Interrupt management, Raw PCI I/O
 @section Bugs and misfeatures
 
 @c FIXME: single open
@@ -196,23 +209,49 @@ The @i{read} and @i{write} implementations currently don't enforce
 general data-size constraints: reading or writing 1, 2, 4, 8 bytes at a
 time forces 8, 16, 32, 64 bit accesses respectively, while bigger
 transfers use unpredictable access patterns to I/O memory, as
-the driver uses @i{copy_from_user} and @i{copy_to_user}.
+the driver uses @i{copy_from_user} and @i{copy_to_user}. Actually,
+@i{read} and @i{write} are not even implemented at this point.
+@c FIXME: read and write
 
 @c FIXME: interrupt is always requested
-The interrupt line is always requested, and handled. This means that if
+The interrupt line is always requested and handled (by disabling it).
+This means that if
 the line is shared with other devices, you can't avoid it being disabled
 thus breaking the other devices.  A specific ioctl to request/release the
 handler is needed.
-
-@c FIXME: dma
-No DMA support is currently implemented (no buffer management exists)
 
 @c FIXME: odd bars
 The driver assumes to work with PCI-E so odd BAR areas are not supported.
 This limitation may be lifted in future versions if needed.
 
 @c ==========================================================================
-@node System calls implemented, Ioctl commands, Bugs and misfeatures, Raw PCI I/O
+@node The DMA buffer, System calls implemented, Bugs and misfeatures, Raw PCI I/O
+@section The DMA buffer
+
+At module load time, a 1MB buffer is allocated. The actual size
+can be changed by means of a module parameter, but it currently
+can`t be bigger than 4MB. 
+
+The buffer is allocated with @i{vmalloc}, so it is contiguous in
+virtual space but not in physical space.  User space can read and
+write the buffer like it was BAR 12 (0xc) of the device, using
+contiguous offsets from 0 up to the buffer size.
+
+In order to DMA data to/from the buffer, the peripheral device must be
+told the physical address to use.  Since allocation is page-grained,
+you need a different physical address for each 4kB page of data.  The
+driver can thus return the list of @i{page frame numbers} that make up
+the @i{vmalloc} buffer.  A PFN is a 32-bit number that identifies the
+position of the page in physical memory. With 4kB pages, you can shift
+by 12 bits to have the physical address, and a 32-bit PFN can span up
+to 44 bits of physical address space.
+
+The details about how PFNs are returned to user space are described later
+where the @i{ioctl} commands are discussed.  A working example is in the
+@i{rrcmd} user space tool.
+
+@c ==========================================================================
+@node System calls implemented, Ioctl commands, The DMA buffer, Raw PCI I/O
 @section System calls implemented
 
 The following system calls are implemented in @i{rawrabbit}:
@@ -227,38 +266,47 @@ The following system calls are implemented in @i{rawrabbit}:
         another process using @i{rawrabbit} at the same time. Please note
         that after @i{fork} the device is still opened twice but the
         driver can't know about it, so in this case changing the active
-        device is still possible.
+        device is allowed, but it can be confusing nonetheless.
 
 @item llseek
 	The @i{seek} family of system calls is implemented using the
         default kernel implementation. A process may seek the device to
-        access specific registers in specific BAR areas. The offset
+        access specific registers in specific BAR areas, or the DMA
+        buffer. The offset
         being used selects the BAR and the offset within the BAR
         at the same time. Each BAR is limited to an extension of 512MB:
         so BAR0 starts at 0, BAR 2 starts at 0x2000.0000 and BAR 4 starts
         at offset 0x4000.0000; if you prefer symbolic names,
         @code{RR_BAR_0}, @code{RR_BAR_2} and @code{RR_BAR_4}
-        are defined in @code{rawrabbit.h}.
+        are defined in @code{rawrabbit.h}. The DMA buffer is accessed
+        like it was BAR 12 (@code{RR_BAR_BUF}).
 
 @item read
 @itemx write
 	@b{Warning:} these are not yet implemented in this version.
-	By reading and writing the device, a process can access board
+
+	By reading and writing the device, a process can access on-board
         I/O space.  The file position (set through @i{llseek} or by
         sequential access of file data) is used to specify both the BAR
         and the offset within the BAR as described above. Access to
         an inexistent BAR returns @code{EINVAL}, access outside the BAR
         size returns @code{EIO}.
+        If the device offers I/O ports (instead of I/O memory), the
+        system calls are not supported and you must use @i{ioctl}.
 
 @item mmap
-	@b{Warning:} these are not yet implemented in this version.
+	@b{Warning:} mmap is not yet implemented in this version.
+
 	The @i{mmap} system call allows direct user-space access to the
         I/O memory. The device offset has the same meaning as for @i{read},
         but accesses to undefined pages cause a @code{SIGBUS} to be sent.
+        If the device offers I/O ports (instead of I/O memory), the
+        @i{mmap} method can't be used on such BAR areas.
 
 @item ioctl
 	A number of @i{ioctl} commands are supported, they are listed
-        in the next section.
+        in the next section. Note that the commamnds to read and write
+        can act both on memory and ``I/O ports'' areas.
 
 @end table        
 
@@ -290,21 +338,25 @@ of the third argument is shown in parentheses after each command:
 @itemx RR_WRITE (struct rr_iocmd *)
 
 	The commands can read or write one register from an even BAR
-        area (BAR 0, 2, 4).  The @code{address} field of the structure
+        area (BAR 0, 2, 4) of within the DMA buffer (BAR 12, 0xc).
+        The @code{address} field of the structure
         specifies both the BAR and the offset (see @code{rawrabbit.h} or
         the description of @i{llseek} above for the details).  Access outside
-        the size of the area returns @code{ENOMEDIUM}.
-        The @code{datasize} field can be 1, 2, 4 or 8 and is a byte count.
+        the size of the area returns @code{ENOMEDIUM}. 
+        The @code{datasize} field of @code{rr_iocmd}
+        can be 1, 2, 4 or 8 and is a byte count.
         The other fields, @code{data8} through @code{data64} are used to
         host the register value; these fields are collapsed together in an
-        unnamed union (see the @i{gcc} documentation about unnamed unions).
+        unnamed union (see the @i{gcc} documentation about unnamed unions),
+        so the same code works with little-endian and big-endian systems.
 
 @item RR_IRQWAIT (no third argument)
 
 	The command waits for an interrupt to happen on the device. If an
         interrupt did already happen, @code{EAGAIN} is returned, otherwise
         an interrupt is waited for and 0 is returned. After the interrupt
-        fired, the interrupt line is disabled. Please note that this may
+        fired, the interrupt line is disabled by the kernel handler.
+         Please note that this may
         be a serious problem if the line is shared with other peripherals,
         like your hard drive o ethernet card.
 
@@ -314,9 +366,27 @@ of the third argument is shown in parentheses after each command:
         acknowledged the interrupt in the board itself, or another interrupt
         will immediately fire. If the interrupt did not happen, @code{EAGAIN}
         is returned, otherwise the command returns the number of nanoseconds
-        of measured delay since the interrupt happens. If more than one
-        second elapsed, the command returns 1000000000 (one billion), with
-        no overflow of signed integer values.
+        that elapsed since the interrupt occurred. If more than one
+        second elapsed, the command returns 1000000000 (one billion), to
+        avoid overflowing the signed integer return value of @i{ioctl}.
+
+@item RR_GETDMASIZE (no third argument)
+
+	The command simply returns the size, in bytes, of the DMA buffer,
+        Currently such size can only be changed at module load time and is
+        fixed for the lifetime of the module.
+
+@item RR_GETPLIST (array of 1024 32-bit values)
+
+	The command returns the PFNs for the current DMA buffer. The initial
+        part of the page passed as third argument is filled with 32-bit
+        values.  The array must be a complete 1024-entry array, even if
+        only part of it is used.  Each value written represents a @i{page
+        frame number} that can be shifted by 12 bits to obtain the physical
+        address for the associated page.  The @i{rawrabbit} module can only
+        work with 4kB pages, and a compile-time check is built into the code
+        to prevent compilation with a different page size; at least not
+        before a serious audit of the code.
 
 @end table
 
@@ -401,10 +471,13 @@ other change from default settings is enough to turn the leds off.
 @end example
 
 Note, in the example above, that ``@code{r}'' is used for writing
-as well as reading.
+as well as reading. If you forget the @code{r} or @code{w}
+command name, however, the program will understand the argument
+as a @i{vendor}:@i{device} pair, and will unbind the driver.
+This can be construed as a design bug and you can blame me at will.
 
 Reading data with a different-from-default size returns the right number
-of hex digits, to stress the data size that has been read:
+of hex digits, to make clear what data size that has been read:
 
 @example
    tornado% ./user/rrcmd r1 4:a08
@@ -421,9 +494,9 @@ Interrupt management with @i{rrcmd} can be performed using two
 commands: @code{irqwait} and @code{irqena}. The former is used to wait
 for an interrupt to happen; the latter re-enables the interrupt in the
 controller. You should probably acknowledge the interrupt in the device
-between these two operations.  The @code{irqwait} command can return
+between these two operations.  The @code{irqwait} command returns
 @code{EAGAIN} if the interrupt has already happened; the @code{irqena}
-command can return @code{EAGAIN} if the interrupt has not happened
+command returns @code{EAGAIN} if the interrupt has not happened
 yet.
 
 For example, this script waits for an interrupt in a BT878 frame
@@ -442,6 +515,25 @@ grabber and acknowledges it for 100 times:
    ./user/rrcmd w 0:104 0
    ./user/rrcmd w 0:100 2
    ./user/rrcmd irqena
+@end example
+
+The other commands are @i{getdmasize} and @i{getplist}, that work
+as follows:
+
+@example
+    tornado% ./user/rrcmd getdmasize
+    dmasize: 1048576 (0x100000 -- 1 MB)
+    tornado% ./user/rrcmd getplist | head
+    buf 0x00000000: pfn 0x00029a3c, addr 0x000029a3c000
+    buf 0x00001000: pfn 0x0002dbb1, addr 0x00002dbb1000
+    buf 0x00002000: pfn 0x00029a34, addr 0x000029a34000
+    buf 0x00003000: pfn 0x00029839, addr 0x000029839000
+    buf 0x00004000: pfn 0x00029838, addr 0x000029838000
+    buf 0x00005000: pfn 0x000298ed, addr 0x0000298ed000
+    buf 0x00006000: pfn 0x000298ec, addr 0x0000298ec000
+    buf 0x00007000: pfn 0x00029843, addr 0x000029843000
+    buf 0x00008000: pfn 0x00029842, addr 0x000029842000
+    buf 0x00009000: pfn 0x0002dbab, addr 0x00002dbab000
 @end example
 
 @c ==========================================================================
