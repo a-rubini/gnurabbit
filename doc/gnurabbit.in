@@ -305,7 +305,11 @@ of the third argument is shown in parentheses after each command:
 
 	The command re-enables the interrupt. The user is assumed to have
         acknowledged the interrupt in the board itself, or another interrupt
-        will immediately fire.
+        will immediately fire. If the interrupt did not happen, @code{EAGAIN}
+        is returned, otherwise the command returns the number of nanoseconds
+        of measured delay since the interrupt happens. If more than one
+        second elapsed, the command returns 1000000000 (one billion), with
+        no overflow of signed integer values.
 
 @end table
 
@@ -427,8 +431,9 @@ grabber and acknowledges it for 100 times:
       ./user/rrcmd w 0:100 2
       ./user/rrcmd irqena
    done
-   # finally, disable the interrupt in the device and enable in the controller
+   # finally, disable the interrupt in the device, ack and enable
    ./user/rrcmd w 0:104 0
+   ./user/rrcmd w 0:100 2
    ./user/rrcmd irqena
 @end example
 
@@ -441,10 +446,11 @@ of the various I/O primitives.
 
 @menu
 * bench/ioctl::                 
+* bench/irq878::                
 @end menu
 
 @c --------------------------------------------------------------------------
-@node bench/ioctl,  , User space benchmarks, User space benchmarks
+@node bench/ioctl, bench/irq878, User space benchmarks, User space benchmarks
 @subsection bench/ioctl
 
 The program tests how many ioctl output operations can be performed
@@ -464,6 +470,24 @@ second:
     tornado% ./bench/ioctl 10000000
     10000000 ioctls in 3068384 usecs
     3259044 ioctls per second
+@end example
+
+@c --------------------------------------------------------------------------
+@node bench/irq878,  , bench/ioctl, User space benchmarks
+@subsection bench/irq878
+
+
+@b{Warning}: this program is missing The program does the same kind of
+operation as the script shown earlier: it handles BT878 interrupts in
+user space, and prints the delays from actual interrupt to
+end-of-acknowledge.  While the script shown earlier report times in
+the order of 10ms, since several processes are executed between
+the interrupt and the final @code{irqena}, this shows the system call
+overhead which is just a few microseconds:
+
+@example
+     tornado% ./bench/irq878 100
+     got 100 interrupts, average delay 6389ns
 @end example
 
 @iftex
