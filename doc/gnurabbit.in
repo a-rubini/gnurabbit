@@ -249,7 +249,6 @@ of the third argument is shown in parenteses after each command:
 
 @item RR_DEVSEL (struct rr_devsel *)
 
-	@b{Warning:} selection by bus and devfn is not implemented.
 	The command copies device selection information to kernel space.
         If the device has been opened more than once the command fails
         with @code{EBUSY}; otherwise the pci driver is unregistered and
@@ -317,9 +316,6 @@ by a kernel driver returns @code{ENODEV} in the same way, as the probe
 function of the PCI driver registered by @i{rawrabbit} will not be
 called.
 
-
-@b{Warning:} read and write are not implemented in this version
-
 To read and write data with @i{rrcmd} you can use the @code{r} and @code{w}
 commands. The syntax of the commands is as follows:
 
@@ -335,6 +331,35 @@ register, the @code{r} and @code{w} commands are the same, and a read
 or write is selected according to the number of arguments. You can think
 of @code{r} as ``register'' and @code{w} as ``word'' if you prefer.
 
+In this example two Gennum leds are turned off, and the value is read back.
+Address 0xa08 in BAR 4 is the ``output drive enable'' register for the
+GPIO signals from the GN4124 chip, and enabling the drive without any
+other change from default settings is enough to turn the leds off.
+
+@example
+    tornado% ./user/rrcmd r 4:a08
+    0x00000000
+    tornado% ./user/rrcmd r 4:a08 0x3000
+    tornado% ./user/rrcmd r 4:a08
+    0x00003000
+@end example
+
+Note, in the example above, that ``@code{r}'' is used for writing
+as well as reading.
+
+Reading data with a different-from-default size returns the right number
+of hex digits, to stress the data size that has been read:
+
+@example
+   tornado% ./user/rrcmd r1 4:a08
+   0x00
+   tornado% ./user/rrcmd r2 4:a08
+   0x3000
+   tornado% ./user/rrcmd r4 4:a08
+   0x00003000
+   tornado% ./user/rrcmd r8 4:a08
+   0x0000000000003000
+@end example
 
 @iftex
 @contents
