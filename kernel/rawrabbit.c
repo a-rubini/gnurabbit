@@ -20,6 +20,8 @@
 #include <linux/completion.h>
 #include <linux/interrupt.h>
 #include <linux/ioctl.h>
+#include <linux/vmalloc.h>
+#include <linux/mm.h>
 #include <asm/uaccess.h>
 
 #include "rawrabbit.h"
@@ -29,6 +31,9 @@ static int rr_vendor = RR_DEFAULT_VENDOR;
 static int rr_device = RR_DEFAULT_DEVICE;
 module_param_named(vendor, rr_vendor, int, 0);
 module_param_named(device, rr_device, int, 0);
+
+static int rr_bufsize = RR_DEFAULT_BUFSIZE;
+module_param_named(bufsize, rr_bufsize, int, 0);
 
 static struct rr_dev rr_dev; /* defined later */
 
@@ -349,6 +354,13 @@ static int rr_do_write_io(struct rr_dev *dev, struct rr_iocmd *iocmd)
 	return 0;
 }
 
+/* This helper is called for dmabuf operations */
+static int rr_do_iocmd_dmabuf(struct rr_dev *dev, unsigned int cmd,
+		       struct rr_iocmd *iocmd)
+{
+	return -EIO; /* FIXME: not implemented */
+}
+
 static int rr_do_iocmd(struct rr_dev *dev, unsigned int cmd,
 		       struct rr_iocmd *iocmd)
 {
@@ -359,8 +371,11 @@ static int rr_do_iocmd(struct rr_dev *dev, unsigned int cmd,
 	bar = __RR_GET_BAR(iocmd->address);
 	off = __RR_GET_OFF(iocmd->address);
 
-	if (bar != 0 && bar != 2 && bar != 4)
+	if (!rr_is_valid_bar(iocmd->address))
 		return -EINVAL;
+
+	if (rr_is_dmabuf_bar(iocmd->address))
+		return rr_do_iocmd_dmabuf(dev, cmd, iocmd);
 
 	bar /= 2;			/* use 0,1,2 as index */
 	r = dev->area[bar];
@@ -394,6 +409,8 @@ static long rr_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 	int ret = 0;
 	unsigned long count;
 	struct timespec tv, tvirq;
+	void *addr;
+	u32 __user *uptr = (u32 __user *)arg;
 
 	/* local copies: use a union to save stack space */
 	union {
@@ -506,6 +523,32 @@ static long rr_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 			return NSEC_PER_SEC;
 		return ret;
 
+	case RR_GETDMASIZE:	/* Return the current dma size */
+		return rr_bufsize;
+
+	case RR_GETPLIST:	/* Return the page list */
+
+		/* Since we assume PAGE_SIZE is 4096, check at compile time */
+		if (PAGE_SIZE != RR_PLIST_SIZE) {
+			extern void __page_size_is_not_4096(void);
+			__page_size_is_not_4096();
+		}
+
+		if (!access_ok(VERIFY_WRITE, arg, RR_PLIST_SIZE))
+			return -EFAULT;
+		for (addr = dev->dmabuf; addr - dev->dmabuf < rr_bufsize;
+		     addr += PAGE_SIZE) {
+			if (0) {
+				printk("page @ %p - pfn %08lx\n", addr,
+				       page_to_pfn(vmalloc_to_page(addr)));
+			}
+			__put_user(page_to_pfn(vmalloc_to_page(addr)), uptr);
+			printk("put %lx -> %p\n",
+			       page_to_pfn(vmalloc_to_page(addr)), uptr);
+			uptr++;
+		}
+		return 0;
+
 	default:
 		return -ENOIOCTLCMD;
 	}
@@ -584,6 +627,17 @@ static int rr_init(void)
 	int ret;
 	struct rr_dev *dev = &rr_dev; /* always use dev as pointer */
 
+	if (rr_bufsize > RR_MAX_BUFSIZE) {
+		printk(KERN_WARNING "rawrabbit: too big a size, using 0x%x\n",
+		       RR_MAX_BUFSIZE);
+		rr_bufsize = RR_MAX_BUFSIZE;
+	}
+
+	dev->dmabuf = __vmalloc(rr_bufsize, GFP_KERNEL | __GFP_ZERO,
+				PAGE_KERNEL);
+	if (!dev->dmabuf)
+		return -ENOMEM;
+
 	/* misc device, that's trivial */
 	ret = misc_register(&rr_misc);
 	if (ret < 0) {
@@ -610,8 +664,11 @@ static int rr_init(void)
 
 static void rr_exit(void)
 {
+	struct rr_dev *dev = &rr_dev;
+
 	pci_unregister_driver(&rr_pcidrv);
 	misc_deregister(&rr_misc);
+	vfree(dev->dmabuf);
 }
 
 module_init(rr_init);

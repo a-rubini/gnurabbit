@@ -27,6 +27,7 @@ struct rr_dev {
 	struct pci_dev		*pdev;		/* non-null after pciprobe */
 	spinlock_t		 lock;
 	wait_queue_head_t	 q;
+	void			*dmabuf;
 	struct timespec		 irqtime;
 	unsigned long		 irqcount;
 	struct completion	 complete;
@@ -49,6 +50,12 @@ struct rr_dev {
 #define RR_DEFAULT_VENDOR	0x1a39
 #define RR_DEFAULT_DEVICE	0x0004
 
+#define RR_DEFAULT_BUFSIZE	(1<<20)		/* 1MB */
+#define RR_PLIST_SIZE		4096		/* no PAGE_SIZE in user space */
+#define RR_PLIST_LEN		(RR_PLIST_SIZE / sizeof(void *))
+#define RR_MAX_BUFSIZE		(RR_PLIST_SIZE * RR_PLIST_LEN)
+
+
 /* This structure is used to select the device to be accessed, via ioctl */
 struct rr_devsel {
 	__u16 vendor;
@@ -65,9 +72,23 @@ struct rr_devsel {
 #define RR_BAR_0		0x00000000
 #define RR_BAR_2		0x20000000
 #define RR_BAR_4		0x40000000
+#define RR_BAR_BUF		0xc0000000	/* The DMA buffer */
+#define RR_IS_DMABUF(addr)	((addr) > RR_BAR_BUF)
 #define __RR_GET_BAR(x)		((x) >> 28)
 #define __RR_SET_BAR(x)		((x) << 28)
 #define __RR_GET_OFF(x)		((x) & 0x0fffffff)
+
+static inline int rr_is_valid_bar(unsigned long address)
+{
+	int bar = __RR_GET_BAR(address);
+	return bar == 0 || bar == 2 || bar == 4 || bar == 0x0c;
+}
+
+static inline int rr_is_dmabuf_bar(unsigned long address)
+{
+	int bar = __RR_GET_BAR(address);
+	return bar == 0x0c;
+}
 
 struct rr_iocmd {
 	__u32 address; /* bar and offset */
@@ -89,6 +110,10 @@ struct rr_iocmd {
 #define RR_WRITE	 _IOW(__RR_IOC_MAGIC, 3, struct rr_iocmd)
 #define RR_IRQWAIT	  _IO(__RR_IOC_MAGIC, 4)
 #define RR_IRQENA	  _IO(__RR_IOC_MAGIC, 5)
+#define RR_GETDMASIZE	  _IO(__RR_IOC_MAGIC, 6)
+/* #define RR_SETDMASIZE	  _IO(__RR_IOC_MAGIC, 7, unsigned long) */
+#define RR_GETPLIST	  _IO(__RR_IOC_MAGIC, 8) /* returns a whole page */
+
 
 #define VFAT_IOCTL_READDIR_BOTH         _IOR('r', 1, struct dirent [2])
 
