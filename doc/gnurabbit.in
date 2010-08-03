@@ -286,7 +286,8 @@ of the third argument is shown in parentheses after each command:
 	The commands can read or write one register from an even BAR
         area (BAR 0, 2, 4).  The @code{address} field of the structure
         specifies both the BAR and the offset (see @code{rawrabbit.h} or
-        the description of @i{llseek} above for the details).
+        the description of @i{llseek} above for the details).  Access outside
+        the size of the area returns @code{ENOMEDIUM}.
         The @code{datasize} field can be 1, 2, 4 or 8 and is a byte count.
         The other fields, @code{data8} through @code{data64} are used to
         host the register value; these fields are collapsed together in an

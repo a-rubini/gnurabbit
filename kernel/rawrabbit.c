@@ -213,6 +213,10 @@ static int rr_do_read_mem(struct rr_dev *dev, struct rr_iocmd *iocmd)
 {
 	int bar = __RR_GET_BAR(iocmd->address) / 2;
 	int off = __RR_GET_OFF(iocmd->address);
+	struct resource *r = dev->area[bar];
+
+	if (off >= r->end - r->start + 1)
+		return -ENOMEDIUM;
 
 	switch(iocmd->datasize) {
 	case 1:
@@ -243,6 +247,10 @@ static int rr_do_write_mem(struct rr_dev *dev, struct rr_iocmd *iocmd)
 {
 	int bar = __RR_GET_BAR(iocmd->address) / 2;
 	int off = __RR_GET_OFF(iocmd->address);
+	struct resource *r = dev->area[bar];
+
+	if (off >= r->end - r->start + 1)
+		return -ENOMEDIUM;
 
 	switch(iocmd->datasize) {
 	case 1:
@@ -274,6 +282,9 @@ static int rr_do_read_io(struct rr_dev *dev, struct rr_iocmd *iocmd)
 	int bar = __RR_GET_BAR(iocmd->address) / 2;
 	int off = __RR_GET_OFF(iocmd->address);
 	struct resource *r = dev->area[bar];
+
+	if (off >= r->end - r->start + 1)
+		return -ENOMEDIUM;
 
 	switch(iocmd->datasize) {
 	case 1:
@@ -307,6 +318,9 @@ static int rr_do_write_io(struct rr_dev *dev, struct rr_iocmd *iocmd)
 	int bar = __RR_GET_BAR(iocmd->address) / 2 ;
 	int off = __RR_GET_OFF(iocmd->address);
 	struct resource *r = dev->area[bar];
+
+	if (off >= r->end - r->start + 1)
+		return -ENOMEDIUM;
 
 	switch(iocmd->datasize) {
 	case 1:
