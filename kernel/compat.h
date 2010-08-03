@@ -25,7 +25,7 @@ static inline void writeq(__u64 val, volatile void __iomem *addr)
 #endif /* X86 */
 
 /* Hack... something I sometimes need */
-static void dumpstruct(char *name, void *ptr, int size)
+static inline void dumpstruct(char *name, void *ptr, int size)
 {
 	int i;
 	unsigned char *p = ptr;
