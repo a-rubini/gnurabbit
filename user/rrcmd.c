@@ -36,7 +36,7 @@ void help(void)
 	fprintf(stderr, "   <cmd> = r[<sz>] <bar>:<addr>\n");
 	fprintf(stderr, "   <cmd> = w[<sz>] <bar>:<addr> <val>\n");
 	fprintf(stderr, "      <sz> = 1, 2, 4, 8 (default = 4)\n");
-	fprintf(stderr, "      <bar> = 0, 2, 4\n");
+	fprintf(stderr, "      <bar> = 0, 2, 4, c (c == dma buffer)\n");
 	exit(1);
 }
 
@@ -111,9 +111,9 @@ int do_iocmd(int fd, char *cmdname, char *addr, char *datum)
 	i = sscanf(addr, "%x:%x%s", &bar, &iocmd.address, rest);
 	if (i != 2)
 		return -EINVAL;
-	if (bar > 4 || bar & 1)
-		return -EINVAL;
 	iocmd.address |= __RR_SET_BAR(bar);
+	if (!rr_is_valid_bar(iocmd.address))
+		return -EINVAL;
 
 	/* parse datum */
 	if (datum) {
