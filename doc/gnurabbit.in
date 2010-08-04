@@ -100,9 +100,7 @@ your environment:
 @end table
 
 The code has been run-tested on version 2.6.34, and compile-tested on
-2.6.24.7-rt27 and 2.6.31.6-rt19
-@c FIXME 2.6.29.4-rt15
-@c FIXME 2.6.31.12-rt21
+2.6.24.7-rt27, 2.6.29.4-rt15, 2.6.31.6-rt19, 2.6.31.12-rt21.
 
 The module creates a @i{misc} char device driver, with major number 10
 and minor number 42.  If you are running @i{udev} the special file
