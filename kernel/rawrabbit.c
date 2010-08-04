@@ -632,13 +632,133 @@ static int rr_mmap(struct file *f, struct vm_area_struct *vma)
 static ssize_t rr_read(struct file *f, char __user *buf, size_t count,
 		       loff_t *offp)
 {
-	return 0;
+	struct rr_dev *dev = f->private_data;
+	void *base;
+	loff_t pos = *offp;
+	int bar, off, size;
+
+	bar = __RR_GET_BAR(pos) / 2; /* index in the array */
+	off = __RR_GET_OFF(pos);
+	if (0)
+		printk("%s: pos %llx = bar %x off %x\n", __func__, pos,
+		       bar*2, off);
+	if (!rr_is_valid_bar(pos))
+		return -EINVAL;
+
+	/* reading the DMA buffer is trivial, so do it first */
+	if (RR_IS_DMABUF(pos)) {
+		base = dev->dmabuf;
+		if (off >= rr_bufsize)
+			return 0; /* EOF */
+		if (off + count > rr_bufsize)
+			count = rr_bufsize - off;
+		if (copy_to_user(buf, base + off, count))
+			return -EFAULT;
+		*offp += count;
+		return count;
+	}
+
+	/* inexistent or I/O ports: EINVAL */
+	if (!dev->remap[bar])
+		return -EINVAL;
+	base = dev->remap[bar];
+
+	/* valid on-board area: enforce sized access if size is 1,2,4,8 */
+	size = dev->area[bar]->end + 1 - dev->area[bar]->start;
+	if (off >= size)
+		return -EIO; /* it's not memory, an error is better than EOF */
+	if (count + off > size)
+		count = size - off;
+	switch (count) {
+	case 1:
+		if (put_user(readb(base + off), (u8 *)buf))
+			return -EFAULT;
+		break;
+	case 2:
+		if (put_user(readw(base + off), (u16 *)buf))
+			return -EFAULT;
+		break;
+	case 4:
+		if (put_user(readl(base + off), (u32 *)buf))
+			return -EFAULT;
+		break;
+	case 8:
+		if (put_user(readq(base + off), (u64 *)buf))
+			return -EFAULT;
+		break;
+	default:
+		if (copy_to_user(buf, base + off, count))
+			return -EFAULT;
+	}
+	*offp += count;
+	return count;
 }
 
 static ssize_t rr_write(struct file *f, const char __user *buf, size_t count,
 		 loff_t *offp)
 {
-	return 0;
+	struct rr_dev *dev = f->private_data;
+	void *base;
+	loff_t pos = *offp;
+	int bar, off, size;
+	union {u8 d8; u16 d16; u32 d32; u64 d64;} data;
+	bar = __RR_GET_BAR(pos) / 2; /* index in the array */
+	off = __RR_GET_OFF(pos);
+	if (!rr_is_valid_bar(pos))
+		return -EINVAL;
+
+	/* writing the DMA buffer is trivial, so do it first */
+	if (RR_IS_DMABUF(pos)) {
+		base = dev->dmabuf;
+		if (off >= rr_bufsize)
+			return -ENOSPC;
+		if (off + count > rr_bufsize)
+			count = rr_bufsize - off;
+		if (copy_from_user(base + off, buf, count))
+			return -EFAULT;
+		*offp += count;
+		return count;
+	}
+
+	/* inexistent or I/O ports: EINVAL */
+	if (!dev->remap[bar])
+		return -EINVAL;
+	base = dev->remap[bar];
+
+	/* valid on-board area: enforce sized access if size is 1,2,4,8 */
+	size = dev->area[bar]->end + 1 - dev->area[bar]->start;
+	if (off >= size)
+		return -EIO; /* it's not memory, an error is better than EOF */
+	if (count + off > size)
+		count = size - off;
+	switch (count) {
+	case 1:
+		if (get_user(data.d8, (u8 *)buf))
+			return -EFAULT;
+		writeb(data.d8, base + off);
+		break;
+	case 2:
+		if (get_user(data.d16, (u16 *)buf))
+			return -EFAULT;
+		writew(data.d16, base + off);
+		break;
+	case 4:
+		if (get_user(data.d32, (u32 *)buf))
+			return -EFAULT;
+		writel(data.d32, base + off);
+		break;
+	case 8:
+		/* while put_user_8 exists, get_user_8 does not */
+		if (copy_from_user(&data.d64, buf, count))
+			return -EFAULT;
+		writeq(data.d64, base + off);
+		break;
+	default:
+		if (copy_from_user(base + off, buf, count))
+			return -EFAULT;
+	}
+	*offp += count;
+	return count;
 }
 
 static struct file_operations rr_fops = {
