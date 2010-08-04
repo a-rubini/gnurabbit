@@ -11,7 +11,7 @@ STRIP		= $(CROSS_COMPILE)strip
 OBJCOPY		= $(CROSS_COMPILE)objcopy
 OBJDUMP		= $(CROSS_COMPILE)objdump
 
-ALL = ioctl irq878
+ALL = ioctl irq878 rdwr
 
 all: $(ALL)
 
