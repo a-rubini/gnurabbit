@@ -219,6 +219,18 @@ handler is needed.
 The driver assumes to work with PCI-E so odd BAR areas are not supported.
 This limitation may be lifted in future versions if needed.
 
+@c FIXME: cache effects
+@b{Important:} please note that there may be bugs related to cache
+memory.  When using DMA you may encounter incorrect data due to
+missing flush or invalidate instructions.  If the problem is real
+please report the bug to me, with as much information as possible
+about the inconsistency, and I'll do my best to find the proper
+solution.  One solution might be adding two @i{ioctl} commands: one to
+flush the buffer after it has been written and one to invalidate it
+before reading; however better solutions, with no API changes, may be
+viable.  Or the problem may just not appear as things are already
+correct, I can't tell for sure.
+
 @c ==========================================================================
 @node The DMA buffer, System calls implemented, Bugs and misfeatures, Raw PCI I/O
 @section The DMA buffer
