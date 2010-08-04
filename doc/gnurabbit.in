@@ -148,9 +148,9 @@ programs can also specify the @i{bus} and @i{devfn} values in order to
 select a specific instance of the hardware device. Similarly, the pair
 @i{subvendor}/@i{subdevice} may be specified.
 
-@c FIXME: read, write, mmap
+@c mmap
 User programs can use @i{read} and @i{write}, @i{mmap} and @i{ioctl}
-as described later (@b{Note:} read, write and mmap are not currently
+as described later (@b{Note:} mmap is not currently
 supported).  Each and every command refers to the device
 currently selected by means of the vendor/device pair as well as
 bus/devfn and/or subvendor/subdevice if specified.
@@ -202,14 +202,11 @@ This version of @i{rawrabbit} creates a single device and can act on a
 single PCI peripheral at a time. This limitation will be removed in
 later versions, as time permits.
 
-@c FIXME: data access size
-The @i{read} and @i{write} implementations currently don't enforce
+The @i{read} and @i{write} implementations don't enforce
 general data-size constraints: reading or writing 1, 2, 4, 8 bytes at a
 time forces 8, 16, 32, 64 bit accesses respectively, while bigger
 transfers use unpredictable access patterns to I/O memory, as
-the driver uses @i{copy_from_user} and @i{copy_to_user}. Actually,
-@i{read} and @i{write} are not even implemented at this point.
-@c FIXME: read and write
+the driver uses @i{copy_from_user} and @i{copy_to_user}.
 
 @c FIXME: interrupt is always requested
 The interrupt line is always requested and handled (by disabling it).
@@ -228,7 +225,7 @@ This limitation may be lifted in future versions if needed.
 
 At module load time, a 1MB buffer is allocated. The actual size
 can be changed by means of a module parameter, but it currently
-can`t be bigger than 4MB. 
+can't be bigger than 4MB. 
 
 The buffer is allocated with @i{vmalloc}, so it is contiguous in
 virtual space but not in physical space.  User space can read and
@@ -247,6 +244,11 @@ to 44 bits of physical address space.
 The details about how PFNs are returned to user space are described later
 where the @i{ioctl} commands are discussed.  A working example is in the
 @i{rrcmd} user space tool.
+
+Unlikely what happens with I/O memory, reading and writing the DMA
+buffer uses the @i{copy_*_user} functions for all accesses, so the
+pattern of actual access to memory can't be controlled, but this is
+not a problem for RAM (as opposed to registers).
 
 @c ==========================================================================
 @node System calls implemented, Ioctl commands, The DMA buffer, Raw PCI I/O
@@ -277,20 +279,26 @@ The following system calls are implemented in @i{rawrabbit}:
         at offset 0x4000.0000; if you prefer symbolic names,
         @code{RR_BAR_0}, @code{RR_BAR_2} and @code{RR_BAR_4}
         are defined in @code{rawrabbit.h}. The DMA buffer is accessed
-        like it was BAR 12 (@code{RR_BAR_BUF}).
+        like it was BAR 12 (@code{RR_BAR_BUF}), so @code{0xc} or @code{c}
+        can be used in @i{rrcmd} (see @ref{rrcmd}).
 
 @item read
 @itemx write
-	@b{Warning:} these are not yet implemented in this version.
-
 	By reading and writing the device, a process can access on-board
         I/O space.  The file position (set through @i{llseek} or by
         sequential access of file data) is used to specify both the BAR
         and the offset within the BAR as described above. Access to
         an inexistent BAR returns @code{EINVAL}, access outside the BAR
         size returns @code{EIO}.
-        If the device offers I/O ports (instead of I/O memory), the
-        system calls are not supported and you must use @i{ioctl}.
+        If the hardware device offers I/O ports (instead of I/O memory), the
+        system calls are not supported and you must use @i{ioctl} -- @i{read}
+        and @i{write} will return @code{EINVAL} like the BAR was not
+        existent.
+
+	As a special case, reading past the DMA buffer size returns 0 (EOF),
+        and writing retunrs @code{ENOSPC}, since the DMA buffer is a memory
+        region and a file-like interface is best suited for command-line tools
+        like @code{dd}.
 
 @item mmap
 	@b{Warning:} mmap is not yet implemented in this version.
@@ -544,6 +552,7 @@ of the various I/O primitives.
 @menu
 * bench/ioctl::                 
 * bench/irq878::                
+* Benchmarking read and write::  
 @end menu
 
 @c --------------------------------------------------------------------------
@@ -570,7 +579,7 @@ second:
 @end example
 
 @c --------------------------------------------------------------------------
-@node bench/irq878,  , bench/ioctl, User space benchmarks
+@node bench/irq878, Benchmarking read and write, bench/ioctl, User space benchmarks
 @subsection bench/irq878
 
 
@@ -586,6 +595,49 @@ overhead which is just a few microseconds:
      tornado% ./bench/irq878 100
      got 100 interrupts, average delay 6389ns
 @end example
+
+@c --------------------------------------------------------------------------
+@node Benchmarking read and write,  , bench/irq878, User space benchmarks
+@subsection Benchmarking read and write
+
+No specific program is provided to check access to the DMA buffer, as
+@i{dd} is enough to verify read and write speed.  A script like the
+following will work:
+
+@smallexample
+IF="if=/dev/rawrabbit"
+OF="of=/dev/rawrabbit"
+# test dmabuf read
+for BS in 1 2 4 8 16 32 64 128 256 512 1024 2048 4096; do
+   dd bs=$BS skip=$(expr $(printf %i 0xc0000000) / $BS) $IF of=/dev/null \
+	2>&1 | grep MB/s
+done
+# test dmabuf write
+for BS in 1 2 4 8 16 32 64 128 256 512 1024 2048 4096; do
+   dd bs=$BS seek=$(expr $(printf %i 0xc0000000) / $BS) $OF if=/dev/null \
+	2>&1 | grep MB/s
+done
+@end smallexample
+
+To benchmark access to I/O memory, the @i{rdwr} utility is offered.
+It repeatedly accesses the GPIO register (bar 4, offset 0xa08 of the
+GN4124 board) as a 32bit register and measures the time it takes:
+
+@example
+   tornado% ./bench/rdwr 1000000
+   1000000 writes in 361487 usecs
+   2766351 writes per second
+   1000000 reads in 1041681 usecs
+   959986 reads per second
+@end example
+
+It's interesting to note that reads are slower than writes, but mostly
+that writes are smaller than writing @i{ioctls} (compare with
+@code{bench/ioctl}).  The difference is probably due to the need to
+@i{lseek} between one @i{read} or @i{write} and the next, so for an
+@i{ioctl}-based I/O operation you need one system call, while to
+achieve the same using @i{read} or @i{write} you need two system
+calls.
 
 @iftex
 @contents
