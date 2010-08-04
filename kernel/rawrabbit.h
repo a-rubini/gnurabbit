@@ -73,7 +73,7 @@ struct rr_devsel {
 #define RR_BAR_2		0x20000000
 #define RR_BAR_4		0x40000000
 #define RR_BAR_BUF		0xc0000000	/* The DMA buffer */
-#define RR_IS_DMABUF(addr)	((addr) > RR_BAR_BUF)
+#define RR_IS_DMABUF(addr)	((addr) >= RR_BAR_BUF)
 #define __RR_GET_BAR(x)		((x) >> 28)
 #define __RR_SET_BAR(x)		((x) << 28)
 #define __RR_GET_OFF(x)		((x) & 0x0fffffff)
