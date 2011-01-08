@@ -40,7 +40,7 @@
 
 @setchapternewpage off
 
-@set update-month August 2010
+@set update-month January 2011
 
 @finalout
 
@@ -99,7 +99,8 @@ your environment:
         system).
 @end table
 
-The code has been run-tested on version 2.6.34, and compile-tested on
+The code has been run-tested on version 2.6.34 and 2.6.35.
+It has also been compile-tested on
 2.6.24.7-rt27, 2.6.29.4-rt15, 2.6.31.6-rt19, 2.6.31.12-rt21.
 
 The module creates a @i{misc} char device driver, with major number 10
@@ -129,7 +130,7 @@ towards user programs and as a PCI driver towards hardware, declaring
 the pair @i{vendor}/@i{device} it is able to drive.
 
 The pair of identifiers is predefined at compile time but can be changed
-at run time. The defaults (set forth in @code{rawrabbit.h} refer to
+at run time. The defaults (set forth) in @code{rawrabbit.h} refer to
 the GN4124 evaluation board.  The values can also be changed at module
 load time by setting the @code{vendor} and @code{device} arguments.
 For example the following command
@@ -376,7 +377,7 @@ of the third argument is shown in parentheses after each command:
         fired, the interrupt line is disabled by the kernel handler.
          Please note that this may
         be a serious problem if the line is shared with other peripherals,
-        like your hard drive o ethernet card.
+        like your hard drive or ethernet card.
 
 @item RR_IRQENA (no third argument)
 
@@ -454,8 +455,8 @@ device and an ethernet port without active driver.
    /dev/rawrabbit: not bound
 @end example
 
-The ``no such device'' error above depends on the chosen bus:devfn
-parameter.  Please note that trying to bound to a device already driven
+The ``no such device'' error above depends on the chosen @i{bus:devfn}
+parameter.  Please note that trying to bind to a device already driven
 by a kernel driver returns @code{ENODEV} in the same way, as the probe
 function of the PCI driver registered by @i{rawrabbit} will not be
 called.
@@ -595,10 +596,10 @@ second:
 @subsection bench/irq878
 
 
-@b{Warning}: this program is missing The program does the same kind of
+The program does the same kind of
 operation as the script shown earlier: it handles BT878 interrupts in
 user space, and prints the delays from actual interrupt to
-end-of-acknowledge.  While the script shown earlier report times in
+end-of-acknowledge.  While the script shown earlier reports times in
 the order of 10ms, since several processes are executed between
 the interrupt and the final @code{irqena}, this shows the system call
 overhead which is just a few microseconds:
@@ -643,11 +644,12 @@ GN4124 board) as a 32bit register and measures the time it takes:
    959986 reads per second
 @end example
 
-It's interesting to note that reads are slower than writes, but mostly
-that writes are smaller than writing @i{ioctls} (compare with
-@code{bench/ioctl}).  The difference is probably due to the need to
-@i{lseek} between one @i{read} or @i{write} and the next, so for an
-@i{ioctl}-based I/O operation you need one system call, while to
+It's interesting to note that reads are slower than writes. Even more
+interesing is that direct
+writes are slower than writing through @i{ioctls} (compare with
+@code{bench/ioctl}).  The difference is probably due use of
+@i{lseek} between one @i{read} or @i{write} and the next one, so for an
+@i{ioctl}-based I/O operation you need one system call, but to
 achieve the same using @i{read} or @i{write} you need two system
 calls.
 
