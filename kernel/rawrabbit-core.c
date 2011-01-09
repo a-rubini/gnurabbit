@@ -1,10 +1,12 @@
 /*
  * Raw I/O interface for PCI or PCI express interfaces
  *
- * Copyright (C) 2010 Alessandro Rubini <rubini@gnudd.com>
+ * Copyright (C) 2010 CERN (www.cern.ch)
+ * Author: Alessandro Rubini <rubini@gnudd.com>
+ *
  * Released according to the GNU GPL, version 2 or any later version.
  *
- * This work is part of the White Rabbit project and has been sponsored
+ * This work is part of the White Rabbit project, a research effort led
  * by CERN, the European Institute for Nuclear Research.
  */
 #include <linux/module.h>
