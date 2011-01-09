@@ -1,3 +1,4 @@
+#include <linux/version.h>
 /* Simple compatibility macros */
 
 #ifdef CONFIG_X86
@@ -23,6 +24,16 @@ static inline void writeq(__u64 val, volatile void __iomem *addr)
 
    #endif
 #endif /* X86 */
+
+/*
+ * request_firmware_nowait adds a gfp_t argument at some point:
+ * patch 9ebfbd45f9d4ee9cd72529cf99e5f300eb398e67 == v2.6.32-5357-g9ebfbd4
+ */
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,32)
+#define __RR_GFP_FOR_RFNW(x)  x,
+#else
+#define __RR_GFP_FOR_RFNW(x)  /* nothing */
+#endif
 
 /* Hack... something I sometimes need */
 static inline void dumpstruct(char *name, void *ptr, int size)
