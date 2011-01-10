@@ -175,6 +175,9 @@ static int rr_pciprobe (struct pci_dev *pdev, const struct pci_device_id *id)
 						r->end + 1 - r->start);
 	}
 
+	/* Finally, ask for a copy of the firmware for this device */
+	rr_ask_firmware(dev);
+
 	return 0;
 }
 
@@ -198,7 +201,8 @@ static void rr_pciremove(struct pci_dev *pdev)
 		dev->remap[i] = NULL;
 		dev->area[i] = NULL;
 	}
-
+	release_firmware(dev->fw);
+	dev->fw = NULL;
 	dev->pdev = NULL;
 }
 
@@ -216,6 +220,7 @@ static struct rr_dev rr_dev = {
 	.id_table = rr_idtable,
 	.q = __WAIT_QUEUE_HEAD_INITIALIZER(rr_dev.q),
 	.devsel = &rr_devsel,
+	.work = __WORK_INITIALIZER(rr_dev.work, rr_load_firmware),
 };
 
 

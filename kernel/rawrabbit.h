@@ -18,6 +18,8 @@
 #include <linux/pci.h>
 #include <linux/spinlock.h>
 #include <linux/completion.h>
+#include <linux/workqueue.h>
+#include <linux/firmware.h>
 #include <linux/wait.h>
 
 struct rr_devsel;
@@ -36,6 +38,8 @@ struct rr_dev {
 	struct resource		*area[3];	/* bar 0, 2, 4 */
 	void			*remap[3];	/* ioremap of bar 0, 2, 4 */
 	unsigned long		 flags;
+	struct work_struct	work;
+	const struct firmware	*fw;
 	int			 usecount;
 };
 
@@ -118,6 +122,11 @@ struct rr_iocmd {
 
 
 #define VFAT_IOCTL_READDIR_BOTH         _IOR('r', 1, struct dirent [2])
+
+
+/* These two live in ./loader.c */
+extern void rr_ask_firmware(struct rr_dev *dev);
+extern void rr_load_firmware(struct work_struct *work);
 
 
 #endif /* __RAWRABBIT_H__ */
