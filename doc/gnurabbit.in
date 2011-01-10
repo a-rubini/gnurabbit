@@ -58,29 +58,26 @@
 @headings single
 
 @c ##########################################################################
-@node Top, Driver for GN4124, (dir), (dir)
+@node Top, Raw PCI I/O, (dir), (dir)
 @top Introduction
 
-This package includes a device driver for the GN4124 PCI-E board and a
+This package is basically a
 module for raw PCI I/O, used at CERN as development tool to help
 prototyping White Rabbit hardware and software.
+
+The main target of this code is the GN4124 PCI-E evaluation board, but
+there is little stuff here that is specific to the gennum chip.
 
 All code and documentation is released according to the GNU GPL, version
 2 or (at your option) any later version.
 
 @menu
-* Driver for GN4124::           
 * Raw PCI I/O::                 
+* Firmware Loader::             
 @end menu
 
 @c ##########################################################################
-@node Driver for GN4124, Raw PCI I/O, Top, Top
-@chapter Driver for GN4124
-
-Still to be done, I'm sorry. Stay tuned.
-
-@c ##########################################################################
-@node Raw PCI I/O,  , Driver for GN4124, Top
+@node Raw PCI I/O, Firmware Loader, Top, Top
 @chapter Raw PCI I/O
 
 The kernel module for raw I/O is called @i{rawrabbit}. After
@@ -647,7 +644,7 @@ GN4124 board) as a 32bit register and measures the time it takes:
 @end example
 
 It's interesting to note that reads are slower than writes. Even more
-interesing is that direct
+interesting is that direct
 writes are slower than writing through @i{ioctls} (compare with
 @code{bench/ioctl}).  The difference is probably due use of
 @i{lseek} between one @i{read} or @i{write} and the next one, so for an
@@ -655,6 +652,37 @@ writes are slower than writing through @i{ioctls} (compare with
 achieve the same using @i{read} or @i{write} you need two system
 calls.
 
+
+@c ##########################################################################
+@node Firmware Loader,  , Raw PCI I/O, Top
+@chapter The Firmware Loader
+
+The kernel driver supports loading a binary file from user space.
+Whenever a device is probed for, a firmware file is requested.
+
+Such @i{probe} actions happen when the driver is matched to a device.
+This happens at load time, if the PCI bus is already hosting a device
+with the proper vendor end product numbers, but also when @i{rrcmd}
+or other user-space tools ask the driver to bind to a different device.
+
+In practice, you can load a new firmware binary simply by re-binding
+the driver to the same device.
+
+The name of the binary file being requested is generated from the various
+identifiers of the board: vendor and product, subvendor and subproduct,
+bus number and devfn.  For example, in my system the file being
+requested is: @code{rrabbit-1a39:0004-1a39:0004@@0001:0000} .
+
+Since no message is reported to system logs when the file is not found,
+the module uses @i{printk} to report the generated name. The file
+can be placed in @i{/lib/firmware} or other places, according to how
+your @i{hotplug} or @i{udevd} is configured.
+
+At this point, the binary file is received and released properly, but it
+is not yet used in any way. I need to program the FPGA that lives in the
+Gennum board, but it's still to be done.
+
+@c ##########################################################################
 @iftex
 @contents
 @end iftex
