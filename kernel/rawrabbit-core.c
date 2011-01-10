@@ -124,6 +124,12 @@ static int rr_pciprobe (struct pci_dev *pdev, const struct pci_device_id *id)
 		if (dev->devsel->devfn != pdev->devfn)
 			return -ENODEV;
 	}
+	/* Record the informaztion in the local structure anyways */
+	dev->devsel->subvendor = pdev->subsystem_vendor;
+	dev->devsel->subdevice = pdev->subsystem_device;
+	dev->devsel->bus = pdev->bus->number;
+	dev->devsel->devfn = pdev->devfn;
+
 	i = pci_enable_device(pdev);
 	if (i < 0)
 	    return i;
