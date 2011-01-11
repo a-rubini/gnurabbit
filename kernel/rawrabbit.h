@@ -128,5 +128,28 @@ struct rr_iocmd {
 extern void rr_ask_firmware(struct rr_dev *dev);
 extern void rr_load_firmware(struct work_struct *work);
 
+/* Registers from the gennum header files */
+enum {
+	FCL_BASE	= 0xB00,
+	FCL_CTRL	= FCL_BASE,
+	FCL_STATUS	= FCL_BASE + 0x4,
+	FCL_IODATA_IN	= FCL_BASE + 0x8,
+	FCL_IODATA_OUT	= FCL_BASE + 0xC,
+	FCL_EN		= FCL_BASE + 0x10,
+	FCL_TIMER_0	= FCL_BASE + 0x14,
+	FCL_TIMER_1	= FCL_BASE + 0x18,
+	FCL_CLK_DIV	= FCL_BASE + 0x1C,
+	FCL_IRQ		= FCL_BASE + 0x20,
+	FCL_TIMER_CTRL	= FCL_BASE + 0x24,
+	FCL_IM		= FCL_BASE + 0x28,
+	FCL_TIMER2_0	= FCL_BASE + 0x2C,
+	FCL_TIMER2_1	= FCL_BASE + 0x30,
+	FCL_DBG_STS	= FCL_BASE + 0x34,
+	FCL_FIFO	= 0xE00,
+	PCI_SYS_CFG_SYSTEM = 0x800
+};
+
+
 
 #endif /* __RAWRABBIT_H__ */
+
