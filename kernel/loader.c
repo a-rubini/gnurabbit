@@ -205,9 +205,8 @@ static void __rr_gennum_load(struct rr_dev *dev, const void *data, int size8)
 		for (i = 0; size32 && i < 128; i++) {
 			writel(*data32, bar4 + FCL_FIFO);
 			data32++; size32--; wrote++;
+			udelay(10);
 		}
-		mdelay(10);
-		/* And now? shouldn't we wait a while? -- FIXME */
 	}
 
 	writel(0x186, bar4 + FCL_CTRL); /* "last data written" */
