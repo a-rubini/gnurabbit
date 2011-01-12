@@ -66,7 +66,8 @@ module for raw PCI I/O, used at CERN as development tool to help
 prototyping White Rabbit hardware and software.
 
 The main target of this code is the GN4124 PCI-E evaluation board, but
-there is little stuff here that is specific to the gennum chip.
+there is little stuff here that is specific to the gennum chip -- mainly
+it's the firmware loader.
 
 All code and documentation is released according to the GNU GPL, version
 2 or (at your option) any later version.
@@ -82,6 +83,9 @@ All code and documentation is released according to the GNU GPL, version
 
 The kernel module for raw I/O is called @i{rawrabbit}. After
 running @i{make} you'll find a file called @code{rawrabbit.ko}.
+I'm sorry for this mismatch in naming, but initially the package was
+expected to host another module in addition to @i{rawrabbit}, something
+Gennum-specific like @i{gnuuser} for ``GN user''.
 
 To compile you may optionally set the following three variables in
 your environment:
@@ -658,7 +662,22 @@ calls.
 @chapter The Firmware Loader
 
 The kernel driver supports loading a binary file from user space.
-Whenever a device is probed for, a firmware file is requested.
+Such a loading is Gennum-specific, so currently the code performs
+the operation only when the bound device has @code{1a39:0004} as
+@i{vendor:device} pair.
+
+@menu
+* Loading at Probe Time::       
+* The Firmware File Name::      
+* The Firmware File Format::    
+* Working Without Udev::        
+@end menu
+
+@c ==========================================================================
+@node Loading at Probe Time, The Firmware File Name, Firmware Loader, Firmware Loader
+@section Loading at Probe Time
+
+Whenever a device is probed for, the driver requests a firmware file. FIXME
 
 Such @i{probe} actions happen when the driver is matched to a device.
 This happens at load time, if the PCI bus is already hosting a device
@@ -666,7 +685,16 @@ with the proper vendor end product numbers, but also when @i{rrcmd}
 or other user-space tools ask the driver to bind to a different device.
 
 In practice, you can load a new firmware binary simply by re-binding
-the driver to the same device.
+the driver to the same device. For example this command re-loads the
+firmware:
+
+@example
+   rrcmd 1a39:0004
+@end example
+
+@c ==========================================================================
+@node The Firmware File Name, The Firmware File Format, Loading at Probe Time, Firmware Loader
+@section The Firmware File Name
 
 The name of the binary file being requested is generated from the various
 identifiers of the board: vendor and product, subvendor and subproduct,
@@ -676,11 +704,154 @@ requested is: @code{rrabbit-1a39:0004-1a39:0004@@0001:0000} .
 Since no message is reported to system logs when the file is not found,
 the module uses @i{printk} to report the generated name. The file
 can be placed in @i{/lib/firmware} or other places, according to how
-your @i{hotplug} or @i{udevd} is configured.
+your @i{hotplug} or @i{udevd} is configured.  The firmware-loader
+mechanism of the kernel arranges for the file to be made available to
+@i{rawrabbit}, whatever the file name.
 
-At this point, the binary file is received and released properly, but it
-is not yet used in any way. I need to program the FPGA that lives in the
-Gennum board, but it's still to be done.
+The current version is still too verbose in its messages, but this is
+work in progress so you'll forgive me. This is for example what I get
+then loading the module with a correct firmware file:
+
+@smallexample
+[ 3048.954185] rr_ask_firmware: called with preempt_cont == 0x00000001
+[ 3048.960525] rr_ask_firmware: current = 3061: insmod
+[ 3048.965486] rr_load_firmware: rrabbit-1a39:0004-1a39:0004@0001:0000
+[ 3048.971834] rr_load_firmware: called with preempt_cont == 0x00000000
+[ 3048.978342] rr_load_firmware: current = 13: events/2
+[ 3048.983441] request firmware returned 0
+[ 3049.048928] rr_loader_complete: called with preempt_cont == 0x00000000
+[ 3049.055572] rr_loader_complete: current = 3066: firmware/rrabbi
+[ 3049.061527] eda3a3c0: size 594412 (0x911ec), data f8b02000
+[ 3049.067045] programming with bar4 @ fe7ff000, vaddr f8494000
+[ 3050.574029] __rr_gennum_load: 220: done after 148603
+@end smallexample
+
+In the message above, you can see both the file name (always starts
+with @i{rrabbit-1a39:0004}) and the context of execution: @i{current}
+is the current process, and as you see a new kernel thread is created
+to run the completion function of the loading mechanism (here
+the @i{pid} is 3066 and the name is @i{firmware/rrabbi} -- only the
+leading 15 bytes of the name are printed.  The final @i{done after 148603}
+reports that the @i{done} bit in Gennum registers became true after
+writing that number of 32-bit words. Hopefully, this matches the file
+size divided by 4.
+
+The next version will feature a @i{sysfs} attribute to change the
+firmware name: writing to the attribute will force a load event, so
+you can just change your FPGA binary by writing to
+@file{/sys/bus/pci/drivers/rawrabbit/fwname}.
+
+@c ==========================================================================
+@node The Firmware File Format, Working Without Udev, The Firmware File Name, Firmware Loader
+@section The Firmware File Format
+
+Testing has been performed with the binary firmware provided by Gennum
+as an example. The file is called @file{lambo.gfw} and is in an
+yet-unknown format. Binaries generated with the Xilinx tools are in
+a different format and don't work (although they load successfully).
+
+The Gennum binary must be preprocessed before it can be programmed in
+the hardware: the header must be removed and the bits in each byte
+must be reversed.  This work is expected to be performed in user
+space, and the file in @file{/lib/firmware} is expected to be the
+raw binary.  For bit-reversal, you can use @file{user/flip} which is
+part of this package.
+
+The Gennum header is simple: after 4 bytes of magic number there is
+a teo-byte little-endian count of header size. In the @file{lambo.gfw}
+this is 34 bytes (0x22). The following script is an example of how
+to process this file, assuming @code{GFW} is the input file name and
+@code{RRABBIT} is the top directory of this package:
+
+@example
+   # print as decimal-2bytes, no address, 2bytes per line,
+   # then get line 3, and delete any space in the string. We get "34".
+   hsize=$(od -t d2 -An -w2 $GFW | sed -n 3p | tr -d ' ')
+   # skip 1 block, of size 34, and bit-reverse the resulting file.
+   dd bs=$hsize skip=1 if=$GFW | $RRABBIT/user/flip > $OUTNAME
+@end example
+
+With the original @file{lambo.gfw} (size 594446, md5sum:
+7d9d289b8014ff2be0550816496463f9) you'll get a file with md5sum
+2aec561e9aa289944d87b2f3ec988b66.
+
+You can check that this works by writing and reading at offset 0x4000 of
+BAR0, where FPGA RAM is exposed:
+
+@example
+    tornado% sudo ./user/rrcmd w4 0:4000 c0ffee
+    tornado% sudo ./user/rrcmd r4 0:4000
+    0x00c0ffee
+@end example
+
+@c ==========================================================================
+@node Working Without Udev,  , The Firmware File Format, Firmware Loader
+@section  Working Without Udev
+
+@b{WARNING:} the current @i{rawrabbit} can't work withouth @i{udev},
+I'm working on this. Most likely it just fails if no firmware is
+sent to it, but I still have to check this.
+
+If needed, you can work withouth @i{udev} or @i{hotplug}, which is good
+if your system is meant to be a small embedded-like, fast-boot device.
+
+Without @i{udev}, the binary being called by the userspace-helper of
+the kernel is the path appearing in @file{/proc/sys/kernel/hotplug}.
+So, for example, you can run this script as @file{hotplug},
+to show what's happening at firmware-load time:
+
+@example
+   #!/bin/sh
+   date > /tmp/hp.$$
+   echo Called as: $0 "$@" >> /tmp/hp.$$
+   echo Environment: >> /tmp/hp.$$
+   env >> /tmp/hp.$$
+@end example
+
+To activate it, just make it executable as
+@i{/usr/local/bin/hotplug-logger} and run this command (without
+@i{udev} or other interfering stuff running):
+
+@example
+   echo /usr/local/bin/hotplug-logger > /proc/sys/kernel/hotplug
+@end example
+
+The following file appeared on my system as @file{/tmp/hp.3190} when
+firmware loading happened (3190 is the @i{pid} of the script):
+
+@smallexample
+    Wed Jan 12 09:26:16 CET 2011
+    Called as: /usr/local/bin/hotplug-logger firmware
+    Environment:
+    SUBSYSTEM=firmware
+    ASYNC=1
+    DEVPATH=/devices/pci0000:00/0000:00:01.0/0000:01:00.0/firmware/0000:01:00.0
+    FIRMWARE=rrabbit-1a39:0004-1a39:0004@0001:0000
+    PATH=/sbin:/bin:/usr/sbin:/usr/bin
+    ACTION=add
+    PWD=/
+    TIMEOUT=60
+    SHLVL=1
+    HOME=/
+    SEQNUM=1351
+    _=/usr/bin/env
+@end smallexample
+
+Thus, with those environment variables, you can use this script as
+user-space helper for firmware loading. Again, just place it as
+executable file in some place and write its pathname to
+@file{/proc/sys/kernel/hotplug}:
+
+@smallexample
+    #!/bin/sh
+    export HOTPLUG_FW_DIR=/lib/firmware/
+    # FIRMWARE and DEVPATH are provided in the event
+    if [ -z "$FIRMWARE" ]; then exit 0; fi
+    echo "$0: loading $FIRMWARE to $DEVPATH" > /dev/console
+    echo 1 > /sys/$DEVPATH/loading
+    cat $HOTPLUG_FW_DIR/$FIRMWARE > /sys/$DEVPATH/data
+    echo 0 > /sys/$DEVPATH/loading
+@end smallexample
 
 @c ##########################################################################
 @iftex
