@@ -43,12 +43,12 @@ static void rr_loader_complete(const struct firmware *fw, void *context)
 	__rr_report_env(__func__); /* Here, preempt count is 0: good! */
 
 	if (fw) {
-	    pr_info("%s: %p: size %i (0x%x), data %p\n", fw,
-		   fw ? fw->size : 0, fw ? fw->size : 0,
-		   fw ? fw->data : 0);
+		pr_info("%s: %p: size %i (0x%x), data %p\n", __func__, fw,
+			fw ? fw->size : 0, fw ? fw->size : 0,
+			fw ? fw->data : 0);
 	} else {
-	    pr_warning("%s: no firmware\n", __func__);
-	    return;
+		pr_warning("%s: no firmware\n", __func__);
+		return;
 	}
 
 	/*
