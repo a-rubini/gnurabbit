@@ -276,7 +276,7 @@ The following system calls are implemented in @i{rawrabbit}:
 
 @item open
 @itemx close
-	These system calls are used to keep a refcount of device use.
+	These system calls are used to keep a reference count of device use.
         If the device has been opened more than once, it will refuse
         to change the active device, to prevent possible confusion in
         another process using @i{rawrabbit} at the same time. Please note
@@ -312,7 +312,7 @@ The following system calls are implemented in @i{rawrabbit}:
         existent.
 
 	As a special case, reading past the DMA buffer size returns 0 (EOF),
-        and writing retunrs @code{ENOSPC}, since the DMA buffer is a memory
+        and writing returns @code{ENOSPC}, since the DMA buffer is a memory
         region and a file-like interface is best suited for command-line tools
         like @code{dd}.
 
@@ -327,7 +327,7 @@ The following system calls are implemented in @i{rawrabbit}:
 
 @item ioctl
 	A number of @i{ioctl} commands are supported, they are listed
-        in the next section. Note that the commamnds to read and write
+        in the next section. Note that the commands to read and write
         can act both on memory and ``I/O ports'' areas.
 
 @end table        
@@ -786,13 +786,23 @@ BAR0, where FPGA RAM is exposed:
 
 @c ==========================================================================
 @node Working Without Udev,  , The Firmware File Format, Firmware Loader
-@section  Working Without Udev
+@section Working Without Udev
 
-@b{WARNING:} the current @i{rawrabbit} can't work withouth @i{udev},
-I'm working on this. Most likely it just fails if no firmware is
-sent to it, but I still have to check this.
+If needed, you can work withoPlease note that with some kernel versions, you won't be able to
+remove the module while it is bound to a device. You must first force
+it to unbind from the device, either by running @i{rrcmd} with
+an unexistent @i{vendor:device} pair, or by using the @i{unbind}
+method in @i{sysfs}:
 
-If needed, you can work withouth @i{udev} or @i{hotplug}, which is good
+@example
+   tornado.root# rmmod rawrabbit
+   ERROR: Module rawrabbit is in use
+   tornado.root# DEV=$(basename /sys/bus/pci/drivers/rawrabbit/*:*)
+   tornado.root# echo $DEV > /sys/bus/pci/drivers/rawrabbit/unbind
+   tornado.root# rmmod rawrabbit
+   tornado.root#
+@end example
+ut @i{udev} or @i{hotplug}, which is good
 if your system is meant to be a small embedded-like, fast-boot device.
 
 Without @i{udev}, the binary being called by the userspace-helper of
@@ -813,7 +823,7 @@ To activate it, just make it executable as
 @i{udev} or other interfering stuff running):
 
 @example
-   echo /usr/local/bin/hotplug-logger > /proc/sys/kernel/hotplug
+   echo /usr/local/bin/hotplug-logger > /sys/kernel/uevent_helper
 @end example
 
 The following file appeared on my system as @file{/tmp/hp.3190} when
@@ -840,7 +850,7 @@ firmware loading happened (3190 is the @i{pid} of the script):
 Thus, with those environment variables, you can use this script as
 user-space helper for firmware loading. Again, just place it as
 executable file in some place and write its pathname to
-@file{/proc/sys/kernel/hotplug}:
+@file{/sys/kernel/uevent_helper}.
 
 @smallexample
     #!/bin/sh
@@ -852,6 +862,22 @@ executable file in some place and write its pathname to
     cat $HOTPLUG_FW_DIR/$FIRMWARE > /sys/$DEVPATH/data
     echo 0 > /sys/$DEVPATH/loading
 @end smallexample
+
+Note that the userspace helper is also called at device creation and
+removal, so you'll get several invocations of either script. This
+leads to several log files in the former case.  Also, please note that
+is no @i{udev} is running, you'll need to @i{mknod} manually, with 10
+as major number and 42 as minor number.
+
+As a final note, please remember that when running the simple
+@i{hotplug-logger} shown above, no firmware is actually loaded, so the
+module remains busy until the timeout (1 minute) expires, and you
+won't be able to unload it. You may want to change such timeout with
+a command like:
+
+@example
+   echo 3 > /sys/class/firmware/timeout
+@end example
 
 @c ##########################################################################
 @iftex
