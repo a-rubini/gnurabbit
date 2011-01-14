@@ -11,7 +11,6 @@
  */
 #include <linux/module.h>
 #include <linux/moduleparam.h>
-#include <linux/spinlock.h>
 #include <linux/kernel.h>
 #include <linux/sched.h>
 #include <linux/wait.h>
@@ -24,6 +23,7 @@
 #include <linux/ioctl.h>
 #include <linux/vmalloc.h>
 #include <linux/mm.h>
+#include <linux/mutex.h>
 #include <asm/uaccess.h>
 
 #include "rawrabbit.h"
@@ -44,12 +44,10 @@ irqreturn_t rr_interrupt(int irq, void *devid)
 {
 	struct rr_dev *dev = devid;
 
-	spin_lock(&dev->lock);
 	getnstimeofday(&dev->irqtime);
 	dev->irqcount++;
 	dev->flags |= RR_FLAG_IRQDISABLE;
 	disable_irq_nosync(irq);
-	spin_unlock(&dev->lock);
 	wake_up_interruptible(&dev->q);
 	return IRQ_HANDLED;
 }
@@ -78,22 +76,19 @@ static int rr_fill_table_and_probe(struct rr_dev *dev)
 {
 	int ret;
 
-	spin_lock(&dev->lock);
+	/* This needs no locks, as it's called in semaphorized process ctxt */
 	if (dev->flags & RR_FLAG_REGISTERED) {
 		pci_unregister_driver(dev->pci_driver);
 		dev->flags &= ~ RR_FLAG_REGISTERED;
 	}
-	spin_unlock(&dev->lock);
 
 	rr_fill_table(dev);
 
 	/* Use the completion mechanism to be notified of probes */
-	spin_lock(&dev->lock);
 	init_completion(&dev->complete);
 	ret = pci_register_driver(dev->pci_driver);
 	if (ret == 0)
 		dev->flags |= RR_FLAG_REGISTERED;
-	spin_unlock(&dev->lock);
 
 	if (ret < 0) {
 		printk(KERN_ERR "%s: Can't register pci driver\n",
@@ -219,6 +214,7 @@ static struct rr_dev rr_dev = {
 	.pci_driver = &rr_pcidrv,
 	.id_table = rr_idtable,
 	.q = __WAIT_QUEUE_HEAD_INITIALIZER(rr_dev.q),
+	.mutex = __MUTEX_INITIALIZER(rr_dev.mutex),
 	.devsel = &rr_devsel,
 	.work = __WORK_INITIALIZER(rr_dev.work, rr_load_firmware),
 };
@@ -496,18 +492,18 @@ static long rr_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 		if (copy_from_user(&karg, (void *)arg, size))
 			return -EFAULT;
 
+	/* serialize the switch with other processes */
+	mutex_lock(&dev->mutex);
+
 	switch(cmd) {
 
 	case RR_DEVSEL:
 		/* If we are the only user, change device requested id */
-		spin_lock(&dev->lock);
 		if (dev->usecount > 1) {
 			printk("usecount %i\n", dev->usecount);
 			ret = -EBUSY;
-		}
-		spin_unlock(&dev->lock);
-		if (ret < 0)
 			break;
+		}
 		/* Warning: race: we can't take the lock */
 		*dev->devsel = karg.devsel;
 		ret = rr_fill_table_and_probe(dev);
@@ -519,10 +515,9 @@ static long rr_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 
 	case RR_DEVGET:
 		/* Return to user space the id of the current device */
-		spin_lock(&dev->lock);
 		if (!dev->pdev) {
-			spin_unlock(&dev->lock);
-			return -ENODEV;
+			ret = -ENODEV;
+			break;
 		}
 		memset(&karg.devsel, 0, sizeof(karg.devsel));
 		karg.devsel.vendor = dev->pdev->vendor;
@@ -531,7 +526,6 @@ static long rr_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 		karg.devsel.subdevice = dev->pdev->subsystem_device;
 		karg.devsel.bus = dev->pdev->bus->number;
 		karg.devsel.devfn = dev->pdev->devfn;
-		spin_unlock(&dev->lock);
 		break;
 
 	case RR_READ:	/* Read a "word" of memory */
@@ -540,31 +534,26 @@ static long rr_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 		break;
 
 	case RR_IRQWAIT: /* Wait for an interrupt to happen */
-		spin_lock_irq(&dev->lock);
 		count = dev->irqcount;
-		if (dev->flags & RR_FLAG_IRQDISABLE)
+		if (dev->flags & RR_FLAG_IRQDISABLE) {
 			ret = -EAGAIN; /* already happened */
-		spin_unlock_irq(&dev->lock);
-		if (ret < 0)
-			return ret;
+			break;
+		}
 		wait_event_interruptible(dev->q, count != dev->irqcount);
 		if (signal_pending(current))
-			return -ERESTARTSYS;
-		return 0;
+			ret = -ERESTARTSYS;
+		break;
 
 	case RR_IRQENA:	/* Re-enable the interrupt after handling it */
-		spin_lock_irq(&dev->lock);
 		getnstimeofday(&tv);
 		tvirq = dev->irqtime;
 		if ( !(dev->flags & RR_FLAG_IRQDISABLE)) {
 			ret = -EAGAIN;
-		} else {
-			dev->flags &= ~RR_FLAG_IRQDISABLE;
-			enable_irq(dev->pdev->irq);
+			break;
 		}
-		spin_unlock_irq(&dev->lock);
-		if (ret < 0)
-			return ret;
+		dev->flags &= ~RR_FLAG_IRQDISABLE;
+		enable_irq(dev->pdev->irq);
+
 		/* return the delay to user space, capped at 1s */
 		if (tv.tv_sec - tvirq.tv_sec > 1)
 			return NSEC_PER_SEC;
@@ -582,11 +571,13 @@ static long rr_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 		/* Since we assume PAGE_SIZE is 4096, check at compile time */
 		if (PAGE_SIZE != RR_PLIST_SIZE) {
 			extern void __page_size_is_not_4096(void);
-			__page_size_is_not_4096();
+			__page_size_is_not_4096(); /* undefined symbol */
 		}
 
-		if (!access_ok(VERIFY_WRITE, arg, RR_PLIST_SIZE))
-			return -EFAULT;
+		if (!access_ok(VERIFY_WRITE, arg, RR_PLIST_SIZE)) {
+			ret = -EFAULT;
+			break;
+		}
 		for (addr = dev->dmabuf; addr - dev->dmabuf < rr_bufsize;
 		     addr += PAGE_SIZE) {
 			if (0) {
@@ -596,13 +587,14 @@ static long rr_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 			__put_user(page_to_pfn(vmalloc_to_page(addr)), uptr);
 			uptr++;
 		}
-		return 0;
+		break;
 
 	default:
-		return -ENOIOCTLCMD;
+		ret = -ENOIOCTLCMD;
+		break;
 	}
-
 	/* finally, copy data to user space and return */
+	mutex_unlock(&dev->mutex);
 	if (ret < 0)
 		return ret;
 	if ((_IOC_DIR(cmd) & _IOC_READ) && (size <= sizeof(karg)))
@@ -619,9 +611,9 @@ static int rr_open(struct inode *ino, struct file *f)
 	struct rr_dev *dev = &rr_dev;
 	f->private_data = dev;
 
-	spin_lock(&dev->lock);
+	mutex_lock(&dev->mutex);
 	dev->usecount++;
-	spin_unlock(&dev->lock);
+	mutex_unlock(&dev->mutex);
 
 	return 0;
 }
@@ -630,9 +622,9 @@ static int rr_release(struct inode *ino, struct file *f)
 {
 	struct rr_dev *dev = f->private_data;
 
-	spin_lock(&dev->lock);
+	mutex_lock(&dev->mutex);
 	dev->usecount--;
-	spin_unlock(&dev->lock);
+	mutex_unlock(&dev->mutex);
 
 	return 0;
 }

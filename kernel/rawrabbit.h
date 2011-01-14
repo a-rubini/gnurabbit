@@ -16,7 +16,6 @@
 
 #ifdef __KERNEL__ /* The initial part of the file is driver-internal stuff */
 #include <linux/pci.h>
-#include <linux/spinlock.h>
 #include <linux/completion.h>
 #include <linux/workqueue.h>
 #include <linux/firmware.h>
@@ -29,7 +28,7 @@ struct rr_dev {
 	struct pci_driver	*pci_driver;
 	struct pci_device_id	*id_table;
 	struct pci_dev		*pdev;		/* non-null after pciprobe */
-	spinlock_t		 lock;
+	struct mutex		mutex;
 	wait_queue_head_t	 q;
 	void			*dmabuf;
 	struct timespec		 irqtime;
