@@ -8,6 +8,7 @@
 #include <linux/firmware.h>
 #include <linux/jiffies.h>
 #include <linux/ctype.h>
+#include <linux/mutex.h>
 
 #include "rawrabbit.h"
 #include "compat.h"
@@ -17,10 +18,56 @@
 #warning "Compiling anyways, but won't be able to load firmware"
 #endif
 
+/* a few prototypes, to avoid many diff lines from previous versions */
 static void __rr_gennum_load(struct rr_dev *dev, const void *data, int size);
+static int rr_expand_name(struct rr_dev *dev, char *outname);
+
+/* I need to be notified when I get written, so "charp" won't work */
+static int param_set_par_fwname(const char *val, struct kernel_param *kp)
+{
+	const char *prev = *(const char **)kp->arg;
+	int ret = param_set_charp(val, kp);
+	extern struct rr_dev rr_dev; /* global: no good */
+	struct rr_dev *dev = &rr_dev;
+	static char fwname[RR_MAX_FWNAME_SIZE];
+
+	if (ret)
+		  return ret;
+	ret = rr_expand_name(dev, fwname);
+	if (ret) {
+		/*
+		 * bad it went: refuse this string and restore prev one
+		 * Looks like there's a problem here: the previous string
+		 * was not freed, or it's me who didn't see it?
+		 */
+		kfree(*(const char **)kp->arg);
+		*(const char **)kp->arg = prev;
+		return ret;
+	}
+	/*
+	 * Use the new firmware immediately at this time. We are in user
+	 * context, so take the mutex to avoid contention with ioctl.
+	 * Note that if we are not bound (like at insmod time) we don't
+	 * want to do the actual loading
+	 */
+	if (dev->pdev) {
+		mutex_lock(&dev->mutex);
+		rr_ask_firmware(dev);
+		mutex_unlock(&dev->mutex);
+	}
+	return 0;
+}
+
+static int param_get_par_fwname(char *buffer, struct kernel_param *kp)
+{
+	int ret = param_get_charp(buffer, kp);
+	return ret;
+}
+
+#define param_check_par_fwname(name, p) __param_check(name, p, char *)
 
 static char *rr_fwname = RR_DEFAULT_FWNAME;
-module_param_named(fwname, rr_fwname, charp, 0644);
+module_param_named(fwname, rr_fwname, par_fwname, 0644);
 
 static int rr_expand_name(struct rr_dev *dev, char *outname)
 {
@@ -147,7 +194,6 @@ void rr_ask_firmware(struct rr_dev *dev)
 {
 	/* Here, preempt_cont is 1 for insmode/rrcmd. What for hotplug? */
 	__rr_report_env(__func__);
-
 	if (dev->fw) {
 		pr_err("%s: firmware asked, but firmware already present\n",
 			__func__);
