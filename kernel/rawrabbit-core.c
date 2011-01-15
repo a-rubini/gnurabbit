@@ -37,7 +37,7 @@ module_param_named(device, rr_device, int, 0);
 static int rr_bufsize = RR_DEFAULT_BUFSIZE;
 module_param_named(bufsize, rr_bufsize, int, 0);
 
-static struct rr_dev rr_dev; /* defined later */
+struct rr_dev rr_dev; /* defined later */
 
 /* Interrupt handler: just disable the interrupt in the controller */
 irqreturn_t rr_interrupt(int irq, void *devid)
@@ -210,7 +210,8 @@ static struct pci_driver rr_pcidrv = {
 
 /* There is only one device by now; I didn't find how to associate to pcidev */
 static struct rr_devsel rr_devsel;
-static struct rr_dev rr_dev = {
+/* The device can't be static. I need it in the module parameter */
+struct rr_dev rr_dev = {
 	.pci_driver = &rr_pcidrv,
 	.id_table = rr_idtable,
 	.q = __WAIT_QUEUE_HEAD_INITIALIZER(rr_dev.q),
