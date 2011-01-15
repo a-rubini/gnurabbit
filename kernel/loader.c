@@ -1,11 +1,13 @@
 
 #include <linux/kernel.h>
 #include <linux/module.h>
+#include <linux/moduleparam.h>
 #include <linux/sched.h>
 #include <linux/hardirq.h>
 #include <linux/workqueue.h>
 #include <linux/firmware.h>
 #include <linux/jiffies.h>
+#include <linux/ctype.h>
 
 #include "rawrabbit.h"
 #include "compat.h"
@@ -16,6 +18,50 @@
 #endif
 
 static void __rr_gennum_load(struct rr_dev *dev, const void *data, int size);
+
+static char *rr_fwname = RR_DEFAULT_FWNAME;
+module_param_named(fwname, rr_fwname, charp, 0644);
+
+static int rr_expand_name(struct rr_dev *dev, char *outname)
+{
+	struct rr_devsel *devsel = dev->devsel;
+	char *si, *so = outname;
+
+	for (si = rr_fwname; *si ; si++) {
+		if (so - outname >= RR_MAX_FWNAME_SIZE)
+			return -ENOSPC;
+		if (*si != '%') {
+			*so++ = *si;
+			continue;
+		}
+		si++;
+		if (so - outname + 9 >= RR_MAX_FWNAME_SIZE)
+			return -ENOSPC;
+		switch(*si) {
+		case 'P': /* PCI vendor:device */;
+			so += sprintf(so, "%04x:%04x",
+				devsel->vendor, devsel->device);
+			break;
+		case 'p': /* PCI subvendor:subdevice */;
+			so += sprintf(so, "%04x:%04x",
+				devsel->subvendor, devsel->subdevice);
+			break;
+		case 'b': /* BUS id */
+			so += sprintf(so, "%04x:%04x",
+				devsel->bus, devsel->devfn);
+			break;
+		case '%':
+			*so++ = '%';
+		default:
+			return -EINVAL;
+		}
+	}
+	/* terminate and remove trailing spaces (includes newlines) */
+	*so = '\0';
+	while (isspace(*--so))
+		*so = '\0';
+	return 0;
+}
 
 /* This stupid function is used to report what is the calling environment */
 static void __rr_report_env(const char *func)
@@ -78,16 +124,14 @@ static void rr_loader_complete(const struct firmware *fw, void *context)
 void rr_load_firmware(struct work_struct *work)
 {
 	struct rr_dev *dev = container_of(work, struct rr_dev, work);
-	struct rr_devsel *devsel = dev->devsel;
 	struct pci_dev *pdev = dev->pdev;
-	static char fwname[64];
+	static char fwname[RR_MAX_FWNAME_SIZE];
 	int err;
 
-	/* Create firmware name */
-	sprintf(fwname, "rrabbit-%04x:%04x-%04x:%04x@%04x:%04x",
-		       devsel->vendor, devsel->device,
-		       devsel->subvendor, devsel->subdevice,
-		       devsel->bus, devsel->devfn);
+	if (rr_expand_name(dev, fwname)) {
+		dev_err(&pdev->dev, "Wrong fwname: \"%s\"\n", rr_fwname);
+		return;
+	}
 	if (1)
 		printk("%s: %s\n", __func__, fwname);
 
@@ -96,7 +140,6 @@ void rr_load_firmware(struct work_struct *work)
 				      __RR_GFP_FOR_RFNW(GFP_KERNEL)
 				      dev, rr_loader_complete);
 	printk("request firmware returned %i\n", err);
-
 }
 
 /* This function is called by the PCI probe function. */

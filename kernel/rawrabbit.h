@@ -55,6 +55,8 @@ struct rr_dev {
 #define RR_DEFAULT_VENDOR	0x1a39
 #define RR_DEFAULT_DEVICE	0x0004
 
+#define RR_DEFAULT_FWNAME	"rrabbit-%P-%p@%b"
+#define RR_MAX_FWNAME_SIZE	64
 #define RR_DEFAULT_BUFSIZE	(1<<20)		/* 1MB */
 #define RR_PLIST_SIZE		4096		/* no PAGE_SIZE in user space */
 #define RR_PLIST_LEN		(RR_PLIST_SIZE / sizeof(void *))
