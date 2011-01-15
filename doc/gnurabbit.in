@@ -758,7 +758,16 @@ as the module removed them automatically; other @code{%} escape on the
 other hand are currently forbidden, and result in an error.
 
 The version string can be changed at load time as a module parameter,
-or later by writing in @code{/sys/module/rawrabbit/fwname}.
+or later by writing in @code{/sys/module/rawrabbit/fwname}. When changing
+the content of the file, a new firmware-load action is triggered, so
+you don't need to rebind the device (may I say I dislike this feature?
+you may just @code{rrcmd 1a39:0004} or rebind in @i{sysfs}).
+
+The driver tries to check the @i{fwname} string: if it's too long or
+uses a wrong format, writing it is refused and the previous name
+remains.  I fear, though, that there may be some buglet about
+allocation/deallocation, so you'd better not write wrong names, to be
+safe.
 
 This is an example session:
 @smallexample
@@ -768,7 +777,6 @@ This is an example session:
    fw-%P
    tornado.root# echo -n "rabbit-%P-%p-bus-%b" \
            > /sys/module/rawrabbit/parameters/f
-   tornado.root# ./user/rrcmd 1a39:0004
    [22898.924501] rr_load_firmware: rabbit-1a39:0004-1a39:0004-bus-0001:0000
 @end smallexample
 
