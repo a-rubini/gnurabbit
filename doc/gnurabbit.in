@@ -712,6 +712,7 @@ The current version is still too verbose in its messages, but this is
 work in progress so you'll forgive me. This is for example what I get
 then loading the module with a correct firmware file:
 
+@c FIXME
 @smallexample
 [ 3048.954185] rr_ask_firmware: called with preempt_cont == 0x00000001
 [ 3048.960525] rr_ask_firmware: current = 3061: insmod
@@ -736,10 +737,40 @@ reports that the @i{done} bit in Gennum registers became true after
 writing that number of 32-bit words. Hopefully, this matches the file
 size divided by 4.
 
-The next version will feature a @i{sysfs} attribute to change the
-firmware name: writing to the attribute will force a load event, so
-you can just change your FPGA binary by writing to
-@file{/sys/bus/pci/drivers/rawrabbit/fwname}.
+This version of the package allows changing the file name for the
+firmware at will (but it doesn't allow picking it from a different
+directory from the ones looked-for by the @i{hotplug} or @i{udev}
+daemons).  The default firmware name is set forth in a module parameter,
+@code{fwname}; the predefined value of the string is
+``@code{rrabbit-%P-%p@@%b}''; such a string is expanded at run time,
+using the following markers:
+
+@itemize @bullet
+@item @code{%P} expands to the PCI vendor and device ID
+@item @code{%p} expands to the subsystem vendor and device ID
+@item @code{%b} expands to the bus and @i{devfn} values
+@item @code{%%} expands to a single percent
+@end itemize
+
+Each such marker is expanded as @code{%04x:%04x}, using the pairs
+vendor:device or bus:devfn. Trailing spaces and newlines are allowed,
+as the module removed them automatically; other @code{%} escape on the
+other hand are currently forbidden, and result in an error.
+
+The version string can be changed at load time as a module parameter,
+or later by writing in @code{/sys/module/rawrabbit/fwname}.
+
+This is an example session:
+@smallexample
+   tornado.root# insmod kernel/rawrabbit.ko fwname="fw-%P"
+   [22194.161358] rr_load_firmware: fw-1a39:0004
+   tornado.root# cat /sys/module/rawrabbit/parameters/fwname
+   fw-%P
+   tornado.root# echo -n "rabbit-%P-%p-bus-%b" \
+           > /sys/module/rawrabbit/parameters/f
+   tornado.root# ./user/rrcmd 1a39:0004
+   [22898.924501] rr_load_firmware: rabbit-1a39:0004-1a39:0004-bus-0001:0000
+@end smallexample
 
 @c ==========================================================================
 @node The Firmware File Format, Working Without Udev, The Firmware File Name, Firmware Loader
