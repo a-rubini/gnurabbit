@@ -12,6 +12,7 @@
 
 #include "rawrabbit.h"
 #include "compat.h"
+#include "loader-ll.h"
 
 #ifndef CONFIG_FW_LOADER
 #warning "CONFIG_FW_LOADER is need in kernel configuration."
@@ -170,7 +171,7 @@ static void rr_loader_complete(const struct firmware *fw, void *context)
  * We want to run the actual loading from a work queue, to have a known
  * loading environment, especially one that can sleep. The function
  * pointer is already in the work structure, set at compile time from
- * rawrabbit-core.c
+ * rawrabbit-core.c .
  */
 void rr_load_firmware(struct work_struct *work)
 {
@@ -212,18 +213,16 @@ void rr_ask_firmware(struct rr_dev *dev)
  * Finally, this is the most important thing, the loader for a Gennum
  * 4124 evaluation board. We know we are mounting a Xilinx Spartan.
  *
- * Unfortunately, most of this is from fcl_gn4124.cpp, for which the
- * license terms are at best ambiguous. 
+ * This function doesn't actually do the actual work: another level is
+ * there to allow the same code to be run both in kernel and user space.
+ * Thus, actual access to registers has been split to loader_low_level(),
+ * in loader-ll.c (aided by loader-ll.h).
  */
 static int __rr_gennum_load(struct rr_dev *dev, const void *data, int size8)
 {
-	int i, ctrl, done = 0, wrote = 0;
+	int i, done = 0, wrote = 0;
 	unsigned long j;
-	u8 val8;
-	const u8 *data8 = data;
-	const u32 *data32 = data;
 	void __iomem *bar4 = dev->remap[2]; /* remap == bar0, bar2, bar4 */
-	int size32 = (size8 + 3) >> 2;
 
 	printk("programming with bar4 @ %x, vaddr %p\n",
 	       dev->area[2]->start, bar4);
@@ -248,66 +247,10 @@ static int __rr_gennum_load(struct rr_dev *dev, const void *data, int size8)
 		}
 	}
 
-	/* Do real stuff */
-	writel(0x00, bar4 + FCL_CLK_DIV);
-	writel(0x40, bar4 + FCL_CTRL); /* Reset */
-	i = readl(bar4 + FCL_CTRL);
-	if (i != 0x40) {
-		printk(KERN_ERR "%s: %i: error\n", __func__, __LINE__);
-		return -EIO;
-	}
-	writel(0x00, bar4 + FCL_CTRL);
-
-	writel(0x00, bar4 + FCL_IRQ); /* clear pending irq */
-
-	switch(size8 & 3) {
-	case 3: ctrl = 0x116; break;
-	case 2: ctrl = 0x126; break;
-	case 1: ctrl = 0x136; break;
-	case 0: ctrl = 0x106; break;
-	}
-	writel(ctrl, bar4 + FCL_CTRL);
-
-	writel(0x00, bar4 + FCL_CLK_DIV); /* again? maybe 1 or 2? */
-
-	writel(0x00, bar4 + FCL_TIMER_CTRL); /* "disable FCL timer func" */
-
-	writel(0x10, bar4 + FCL_TIMER_0); /* "pulse width" */
-	writel(0x00, bar4 + FCL_TIMER_1);
-
-	/* Set delay before data and clock is applied by FCL after SPRI_STATUS is
-		detected being assert.
-	*/
-	writel(0x08, bar4 + FCL_TIMER2_0); /* "delay before data/clock..." */
-	writel(0x00, bar4 + FCL_TIMER2_1);
-	writel(0x17, bar4 + FCL_EN); /* "output enable" */
-
-	ctrl |= 0x01; /* "start FSM configuration" */
-	writel(ctrl, bar4 + FCL_CTRL);
-
-	while(size32 > 0)
-	{
-		/* Check to see if FPGA configuation has error */
-		i = readl(bar4 + FCL_IRQ);
-		if ( (i & 8) && wrote) {
-			done = 1;
-			printk("%s: %i: done after %i\n", __func__, __LINE__,
-				wrote);
-		} else if ( (i & 0x4) && !done) {
-			printk("%s: %i: error after %i\n", __func__, __LINE__,
-				wrote);
-			return -EIO;
-		}
-
-		/* Write 128 dwords into FIFO at a time. */
-		for (i = 0; size32 && i < 128; i++) {
-			writel(*data32, bar4 + FCL_FIFO);
-			data32++; size32--; wrote++;
-			udelay(10);
-		}
-	}
-
-	writel(0x186, bar4 + FCL_CTRL); /* "last data written" */
+	/* Ok, now call register access, which lived elsewhere */
+	wrote = loader_low_level( 0 /* unused fd */, bar4, data, size8);
+	if (wrote < 0)
+		return wrote;
 
 	j = jiffies + 2 * HZ;
 	/* Wait for DONE interrupt  */
