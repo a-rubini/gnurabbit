@@ -19,7 +19,7 @@
 #endif
 
 /* a few prototypes, to avoid many diff lines from previous versions */
-static void __rr_gennum_load(struct rr_dev *dev, const void *data, int size);
+static int __rr_gennum_load(struct rr_dev *dev, const void *data, int size);
 static int rr_expand_name(struct rr_dev *dev, char *outname);
 
 /* I need to be notified when I get written, so "charp" won't work */
@@ -130,6 +130,7 @@ static void __rr_report_env(const char *func)
 static void rr_loader_complete(const struct firmware *fw, void *context)
 {
 	struct rr_dev *dev = context;
+	int ret;
 
 	dev->fw = fw;
 
@@ -152,13 +153,16 @@ static void rr_loader_complete(const struct firmware *fw, void *context)
 	 */
 	if (dev->devsel->vendor == RR_DEFAULT_VENDOR
 	    && dev->devsel->device == RR_DEFAULT_DEVICE) {
-		__rr_gennum_load(dev, fw->data, fw->size);
+		ret = __rr_gennum_load(dev, fw->data, fw->size);
 	} else {
-		pr_warning("%s: not loading firmware: this is not a GN4124\n",
+		pr_err("%s: not loading firmware: this is not a GN4124\n",
 			   __func__);
+		ret = -ENODEV;
 	}
 	/* At this point, we can releae the firmware we got */
 	release_firmware(dev->fw);
+	if (ret)
+		pr_err("%s: loading returned error %i\n", __func__, ret);
 	dev->fw = NULL;
 }
 
@@ -211,7 +215,7 @@ void rr_ask_firmware(struct rr_dev *dev)
  * Unfortunately, most of this is from fcl_gn4124.cpp, for which the
  * license terms are at best ambiguous. 
  */
-static void __rr_gennum_load(struct rr_dev *dev, const void *data, int size8)
+static int __rr_gennum_load(struct rr_dev *dev, const void *data, int size8)
 {
 	int i, ctrl, done = 0, wrote = 0;
 	unsigned long j;
@@ -250,7 +254,7 @@ static void __rr_gennum_load(struct rr_dev *dev, const void *data, int size8)
 	i = readl(bar4 + FCL_CTRL);
 	if (i != 0x40) {
 		printk(KERN_ERR "%s: %i: error\n", __func__, __LINE__);
-		return;
+		return -EIO;
 	}
 	writel(0x00, bar4 + FCL_CTRL);
 
@@ -292,7 +296,7 @@ static void __rr_gennum_load(struct rr_dev *dev, const void *data, int size8)
 		} else if ( (i & 0x4) && !done) {
 			printk("%s: %i: error after %i\n", __func__, __LINE__,
 				wrote);
-			return;
+			return -EIO;
 		}
 
 		/* Write 128 dwords into FIFO at a time. */
@@ -316,15 +320,15 @@ static void __rr_gennum_load(struct rr_dev *dev, const void *data, int size8)
 		} else if( (i & 0x4) && !done) {
 			printk("%s: %i: error after %i\n", __func__, __LINE__,
 			       wrote);
-			return;
+			return -ETIMEDOUT;
 		}
 		if (time_after(jiffies, j)) {
 			printk("%s: %i: tout after %i\n", __func__, __LINE__,
 			       wrote);
-			return;
+			return -ETIMEDOUT;
 		}
 	}
-	return;
+	return 0;
 }
 
 
