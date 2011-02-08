@@ -227,26 +227,6 @@ static int __rr_gennum_load(struct rr_dev *dev, const void *data, int size8)
 	printk("programming with bar4 @ %x, vaddr %p\n",
 	       dev->area[2]->start, bar4);
 
-	if (0) {
-		/*
-		 * Hmmm.... revers bits for xilinx images?
-		 * We can't do in kernel space anyways, as the pages are RO
-		 */
-		u8 *d8 = (u8 *)data8; /* Horrible: kill const */
-		for (i = 0; i < size8; i++) {
-			val8 = d8[i];
-			d8[i] =  0
-				| ((val8 & 0x80) >> 7)
-				| ((val8 & 0x40) >> 5)
-				| ((val8 & 0x20) >> 3)
-				| ((val8 & 0x10) >> 1)
-				| ((val8 & 0x08) << 1)
-				| ((val8 & 0x04) << 3)
-				| ((val8 & 0x02) << 5)
-				| ((val8 & 0x01) << 7);
-		}
-	}
-
 	/* Ok, now call register access, which lived elsewhere */
 	wrote = loader_low_level( 0 /* unused fd */, bar4, data, size8);
 	if (wrote < 0)

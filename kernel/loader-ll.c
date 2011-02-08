@@ -9,9 +9,34 @@
 #include "rawrabbit.h"
 #include "loader-ll.h"
 
+static inline uint8_t reverse_bits8(uint8_t x)
+{
+	x = ((x >> 1) & 0x55) | ((x & 0x55) << 1);
+	x = ((x >> 2) & 0x33) | ((x & 0x33) << 2);
+	x = ((x >> 4) & 0x0f) | ((x & 0x0f) << 4);
+
+	return x;
+}
+
+static uint32_t unaligned_bitswap_le32(const uint32_t *ptr32)
+{
+	static uint32_t tmp32;
+	static uint8_t *tmp8 = (uint8_t *) &tmp32;
+	static uint8_t *ptr8;
+
+	ptr8 = (uint8_t *) ptr32;
+
+	*(tmp8 + 0) = reverse_bits8(*(ptr8 + 0));
+	*(tmp8 + 1) = reverse_bits8(*(ptr8 + 1));
+	*(tmp8 + 2) = reverse_bits8(*(ptr8 + 2));
+	*(tmp8 + 3) = reverse_bits8(*(ptr8 + 3));
+
+	return tmp32;
+}
+
 /*
- * Unfortunately, most of this is from fcl_gn4124.cpp, for which the
- * license terms are at best ambiguous. 
+ * Unfortunately, most of the following is from fcl_gn4124.cpp, for which
+ * the license terms are at best ambiguous. 
  */
 
 int loader_low_level(int fd, void __iomem *bar4, const void *data, int size8)
@@ -77,7 +102,8 @@ int loader_low_level(int fd, void __iomem *bar4, const void *data, int size8)
 
 		/* Write a few dwords into FIFO at a time. */
 		for (i = 0; size32 && i < 32; i++) {
-			lll_write(fd, bar4, *data32, FCL_FIFO);
+			lll_write(fd, bar4, unaligned_bitswap_le32(data32),
+				  FCL_FIFO);
 			data32++; size32--; wrote++;
 		}
 	}
