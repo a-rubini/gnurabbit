@@ -49,6 +49,10 @@ struct rr_dev {
 
 #define RR_PROBE_TIMEOUT	(HZ/10)		/* for pci_register_drv */
 
+/* These two live in ./loader.c */
+extern void rr_ask_firmware(struct rr_dev *dev);
+extern void rr_load_firmware(struct work_struct *work);
+
 #endif /* __KERNEL__ */
 
 /* By default, the driver registers for this vendor/devid */
@@ -124,11 +128,6 @@ struct rr_iocmd {
 
 #define VFAT_IOCTL_READDIR_BOTH         _IOR('r', 1, struct dirent [2])
 
-
-/* These two live in ./loader.c */
-extern void rr_ask_firmware(struct rr_dev *dev);
-extern void rr_load_firmware(struct work_struct *work);
-
 /* Registers from the gennum header files */
 enum {
 	FCL_BASE	= 0xB00,
@@ -149,8 +148,6 @@ enum {
 	FCL_FIFO	= 0xE00,
 	PCI_SYS_CFG_SYSTEM = 0x800
 };
-
-
 
 #endif /* __RAWRABBIT_H__ */
 
