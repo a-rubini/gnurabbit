@@ -71,11 +71,14 @@ int loader_low_level(int fd, void __iomem *bar4, const void *data, int size8)
 			return -EIO;
 		}
 
-		/* Write 128 dwords into FIFO at a time. */
-		for (i = 0; size32 && i < 128; i++) {
+		/* Wait until at least 1/2 of the fifo is empty */
+		while (lll_read(fd, bar4, FCL_IRQ)  & (1<<5))
+			;
+
+		/* Write a few dwords into FIFO at a time. */
+		for (i = 0; size32 && i < 32; i++) {
 			lll_write(fd, bar4, *data32, FCL_FIFO);
 			data32++; size32--; wrote++;
-			udelay(10);
 		}
 	}
 
