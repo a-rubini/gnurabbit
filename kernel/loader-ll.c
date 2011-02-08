@@ -42,7 +42,7 @@ static uint32_t unaligned_bitswap_le32(const uint32_t *ptr32)
 int loader_low_level(int fd, void __iomem *bar4, const void *data, int size8)
 {
 	int size32 = (size8 + 3) >> 2;
-	const u32 *data32 = data;
+	const uint32_t *data32 = data;
 	int ctrl = 0, i, done = 0, wrote = 0;
 
 	lll_write(fd, bar4, 0x00, FCL_CLK_DIV);
