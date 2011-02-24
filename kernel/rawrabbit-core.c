@@ -556,16 +556,21 @@ static long rr_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 		enable_irq(dev->pdev->irq);
 
 		/* return the delay to user space, capped at 1s */
-		if (tv.tv_sec - tvirq.tv_sec > 1)
-			return NSEC_PER_SEC;
+		if (tv.tv_sec - tvirq.tv_sec > 1) {
+			ret = NSEC_PER_SEC;
+			break;
+		}
 		ret = (tv.tv_sec - tvirq.tv_sec) * NSEC_PER_SEC
 			+ tv.tv_nsec - tvirq.tv_nsec;
-		if (ret > NSEC_PER_SEC)
-			return NSEC_PER_SEC;
-		return ret;
+		if (ret > NSEC_PER_SEC) {
+			ret = NSEC_PER_SEC;
+			break;
+		}
+		break;
 
 	case RR_GETDMASIZE:	/* Return the current dma size */
-		return rr_bufsize;
+		ret = rr_bufsize;
+		break;
 
 	case RR_GETPLIST:	/* Return the page list */
 
