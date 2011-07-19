@@ -131,20 +131,6 @@ static int rr_pciprobe (struct pci_dev *pdev, const struct pci_device_id *id)
 
 	dev->pdev = pdev;
 
-	/* FIXME: how to know if irq is valid? */
-	if (pdev->irq > 0) {
-		i = request_irq(pdev->irq, rr_interrupt, IRQF_SHARED,
-				"rawrabbit", dev);
-		if (i < 0) {
-			printk("%s: can't request irq %i, error %i\n", __func__,
-			       pdev->irq, i);
-		} else {
-			dev->flags |= RR_FLAG_IRQREQUEST;
-		}
-	}
-
-	complete(&dev->complete);
-
 	if (0) {	/* Print some information about the bars */
 		int i;
 		struct resource *r;
@@ -170,8 +156,23 @@ static int rr_pciprobe (struct pci_dev *pdev, const struct pci_device_id *id)
 						r->end + 1 - r->start);
 	}
 
+	complete(&dev->complete);
+
 	/* Finally, ask for a copy of the firmware for this device */
 	rr_ask_firmware(dev);
+
+	/* FIXME: how to know if irq is valid? */
+	if (pdev->irq > 0) {
+		i = request_irq(pdev->irq, rr_interrupt, IRQF_SHARED,
+				"rawrabbit", dev);
+		if (i < 0) {
+			printk("%s: can't request irq %i, error %i\n", __func__,
+			       pdev->irq, i);
+		} else {
+			dev->flags |= RR_FLAG_IRQREQUEST;
+		}
+	}
+
 
 	return 0;
 }
