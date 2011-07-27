@@ -65,10 +65,10 @@ static int param_get_par_fwname(char *buffer, struct kernel_param *kp)
 	return ret;
 }
 
-#define param_check_par_fwname(name, p) __param_check(name, p, char *)
+//#define param_check_par_fwname(name, p) __param_check(name, p, char *)
 
 static char *rr_fwname = RR_DEFAULT_FWNAME;
-module_param_named(fwname, rr_fwname, par_fwname, 0644);
+module_param_named(fwname, rr_fwname, charp, 0644);
 
 static int rr_expand_name(struct rr_dev *dev, char *outname)
 {
