@@ -137,11 +137,10 @@ static int rr_pciprobe (struct pci_dev *pdev, const struct pci_device_id *id)
 
 		for (i = 0; i < 6; i++) {
 			r = pdev->resource + i;
-			printk("%s: resource %i: %llx-%llx (%s) - %08lx\n",
+			printk("%s: resource %i: %llx-%llx - %08lx\n",
 			       __func__, i,
 			       (long long)r->start,
-			       (long long)r->end,
-			       r->name, r->flags);
+			       (long long)r->end, r->flags);
 		}
 	}
 
