@@ -57,6 +57,10 @@
 @setchapternewpage off
 @headings single
 
+@iftex
+@contents
+@end iftex
+
 @c ##########################################################################
 @node Top, Raw PCI I/O, (dir), (dir)
 @top Introduction
@@ -918,9 +922,5 @@ a command like:
    echo 3 > /sys/class/firmware/timeout
 @end example
 
-@c ##########################################################################
-@iftex
-@contents
-@end iftex
 
 @bye
