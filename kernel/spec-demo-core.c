@@ -1,7 +1,9 @@
 /*
- * Raw I/O interface for PCI or PCI express interfaces
+ * Spec-demo core driver. This has been copied from rawrabbit-core.c
+ * and then modified. To keep differences small it still uses "rr_" as
+ * a prefix.
  *
- * Copyright (C) 2010 CERN (www.cern.ch)
+ * Copyright (C) 2010,2011 CERN (www.cern.ch)
  * Author: Alessandro Rubini <rubini@gnudd.com>
  *
  * Released according to the GNU GPL, version 2 or any later version.
@@ -38,19 +40,6 @@ static int rr_bufsize = RR_DEFAULT_BUFSIZE;
 module_param_named(bufsize, rr_bufsize, int, 0);
 
 struct rr_dev rr_dev; /* defined later */
-
-/* Interrupt handler: just disable the interrupt in the controller */
-irqreturn_t rr_interrupt(int irq, void *devid)
-{
-	struct rr_dev *dev = devid;
-
-	getnstimeofday(&dev->irqtime);
-	dev->irqcount++;
-	dev->flags |= RR_FLAG_IRQDISABLE;
-	disable_irq_nosync(irq);
-	wake_up_interruptible(&dev->q);
-	return IRQ_HANDLED;
-}
 
 /*
  * We have a PCI driver, used to access the BAR areas.
@@ -160,19 +149,6 @@ static int rr_pciprobe (struct pci_dev *pdev, const struct pci_device_id *id)
 	/* Finally, ask for a copy of the firmware for this device */
 	rr_ask_firmware(dev);
 
-	/* FIXME: how to know if irq is valid? */
-	if (pdev->irq > 0) {
-		i = request_irq(pdev->irq, rr_interrupt, IRQF_SHARED,
-				"rawrabbit", dev);
-		if (i < 0) {
-			printk("%s: can't request irq %i, error %i\n", __func__,
-			       pdev->irq, i);
-		} else {
-			dev->flags |= RR_FLAG_IRQREQUEST;
-		}
-	}
-
-
 	return 0;
 }
 
@@ -182,15 +158,6 @@ static void rr_pciremove(struct pci_dev *pdev)
 	struct rr_dev *dev = &rr_dev;
 	int i;
 
-	if (dev->flags & RR_FLAG_IRQREQUEST) {
-		free_irq(pdev->irq, dev);
-		dev->flags &= ~RR_FLAG_IRQREQUEST;
-		/* Also, reenable it, just in case we are shared.*/
-		if (dev->flags & RR_FLAG_IRQDISABLE) {
-			dev->flags &= ~RR_FLAG_IRQDISABLE;
-			enable_irq(dev->pdev->irq);
-		}
-	}
 	for (i = 0; i < 3; i++) {
 		iounmap(dev->remap[i]);		/* safe for NULL ptrs */
 		dev->remap[i] = NULL;
@@ -455,8 +422,6 @@ static long rr_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 	struct rr_dev *dev = f->private_data;
 	int size = _IOC_SIZE(cmd); /* the size bitfield in cmd */
 	int ret = 0;
-	unsigned long count;
-	struct timespec tv, tvirq;
 	void *addr;
 	u32 __user *uptr = (u32 __user *)arg;
 
@@ -532,40 +497,6 @@ static long rr_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 	case RR_READ:	/* Read a "word" of memory */
 	case RR_WRITE:	/* Write a "word" of memory */
 		ret = rr_do_iocmd(dev, cmd, &karg.iocmd);
-		break;
-
-	case RR_IRQWAIT: /* Wait for an interrupt to happen */
-		count = dev->irqcount;
-		if (dev->flags & RR_FLAG_IRQDISABLE) {
-			ret = -EAGAIN; /* already happened */
-			break;
-		}
-		wait_event_interruptible(dev->q, count != dev->irqcount);
-		if (signal_pending(current))
-			ret = -ERESTARTSYS;
-		break;
-
-	case RR_IRQENA:	/* Re-enable the interrupt after handling it */
-		getnstimeofday(&tv);
-		tvirq = dev->irqtime;
-		if ( !(dev->flags & RR_FLAG_IRQDISABLE)) {
-			ret = -EAGAIN;
-			break;
-		}
-		dev->flags &= ~RR_FLAG_IRQDISABLE;
-		enable_irq(dev->pdev->irq);
-
-		/* return the delay to user space, capped at 1s */
-		if (tv.tv_sec - tvirq.tv_sec > 1) {
-			ret = NSEC_PER_SEC;
-			break;
-		}
-		ret = (tv.tv_sec - tvirq.tv_sec) * NSEC_PER_SEC
-			+ tv.tv_nsec - tvirq.tv_nsec;
-		if (ret > NSEC_PER_SEC) {
-			ret = NSEC_PER_SEC;
-			break;
-		}
 		break;
 
 	case RR_GETDMASIZE:	/* Return the current dma size */
