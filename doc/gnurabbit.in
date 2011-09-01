@@ -83,6 +83,7 @@ All code and documentation is released according to the GNU GPL, version
 @menu
 * Raw PCI I/O::                 
 * Firmware Loader::             
+* Spec-demo::                   
 @end menu
 
 @c ##########################################################################
@@ -697,7 +698,7 @@ calls.
 
 
 @c ##########################################################################
-@node Firmware Loader,  , Raw PCI I/O, Top
+@node Firmware Loader
 @chapter The Firmware Loader
 
 The kernel driver supports loading a binary file from user space.
@@ -918,6 +919,119 @@ a command like:
 @example
    echo 3 > /sys/class/firmware/timeout
 @end example
+
+@c ##########################################################################
+@node Spec-demo
+@chapter Spec-demo
+
+The kernel module @i{spec-demo.ko} is similar to the @i{rawrabbit.ko}
+driver, but is somewhat specific for the SPEC device.  The current
+implementation, however is mainly a quick hack to see how
+SPEC-specific stuff works in practice. Most likely the SPEC driver
+will be split to a separate package over time.
+
+The @i{spec-demo} creates a char device called @code{/dev/spec}.  Note
+that the @i{rrcmd} tool looks for that name if @code{/dev/rawrabbit}
+is not available.
+
+@menu
+* Differences from rawrabbit::  
+* Module parameters::           
+* Future developments::         
+@end menu
+
+@c ==========================================================================
+@node Differences from rawrabbit
+@section Differences from rawrabbit
+
+The driver is different from the @i{rawrabbit} in these aspects:
+
+@table @i
+
+@item There is no concept of binding.
+
+	The driver registers as a driver for the gennum chip alone.
+        Again, at this point it assumes there is only one such card in the
+        system.
+
+@item No interrupts are supported.
+
+	Some of the development boards we are using share the interrupt
+        with the graphic card, and @i{rawrabbit} has problems with that,
+        because it effectively disables the graphic interrupt and the
+        system will then freeze. We are not yet using interrupts in the
+        SPEC so this seems the right choice.
+
+@item The firmware loader loads two files
+
+	The loader tries to get two files: one is the FPGA bitstream,
+        named @code{spec_top.bin} and to other is the LM32 program,
+        @code{wrc.bin}.  So you should have both of them in @i{/lib/firmware}.
+        The names can be modified by module parameters (see below), but
+        not slot number or whatever is added, given the current limitation
+        of 1 card per host.
+
+@item You can prevent loading the FPGA binary
+
+	Since loading the FPGA binary is a slow process, you can avoid
+        re-loading the FPGA bitstream when loading the driver. Currently
+        the suggested way to change the LM32 program is unloading and
+        reloading the driver, with @code{fwname=none} as module argument.
+        (Actually, this is not different from rawrabbit, but a new feature
+        common to both modules).
+
+@end table
+
+This is what happens when you load @code{spec-demo.ko}, with the two
+binary files in place in @i{/lib/firmware}:
+
+@smallexample
+[ 2154.431855] request firmware "spec_top.bin": 0 (Success)
+[ 2154.437590] rr_loader_complete: got firmware file, 1484404 (0x16a674) bytes
+[ 2154.636004] __rr_gennum_load: done after 371101 writes
+[ 2154.641362] request program "wrc.bin": 0 (Success)
+[ 2154.650423] spec_loader_complete: got program file, 48876 (0xbeec) bytes
+[ 2154.658879] LM32 has been restarted
+@end smallexample
+
+@c ==========================================================================
+@node Module parameters
+@section Module parameters
+
+The following module parameters are recognized at module load time:
+
+@table @code
+
+@item fwname=
+
+	The string passed is used as name for the gateware file. The
+        default is @code{spec_top.bin}. If you pass @code{none}, no
+        file is loaded.
+
+@item program=
+
+	The string is used as the name for the LM32 program file. The
+        default is @code{wrc.bin}. If you pass @code{none}, no
+        file is loaded.
+
+@end table
+
+@c ==========================================================================
+@node Future developments
+@section Future developments
+
+The driver currently lacks support to replace the program without
+unloading the kernel module. Similarly, it should support resetting
+and restarting the CPU, accessing GPIO and so on.
+
+The most likely outcome is a separate SPEC package, with a
+multi-module driver based on WB-enumeration, because the SPEC in
+itself cannot have a driver: the actual feature-set depends on the
+bitstream being loaded.
+
+The current driver is only suited for the White Rabbit demo packages,
+as described by the @code{spec-demo} manual in
+@url{http://www.ohwr.org/projects/pfc-sw/files}.
 
 
 @bye
