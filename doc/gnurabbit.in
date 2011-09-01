@@ -42,7 +42,7 @@
 
 @setchapternewpage off
 
-@set update-month January 2011
+@set update-month August 2011
 
 @finalout
 
@@ -65,11 +65,15 @@
 @node Top, Raw PCI I/O, (dir), (dir)
 @top Introduction
 
-This package is basically a
-module for raw PCI I/O, used at CERN as development tool to help
-prototyping White Rabbit hardware and software.
+This package includes both a module for raw PCI I/O and a simple
+driver for the SPEC card.
 
-The main target of this code is the GN4124 PCI-E evaluation board, but
+Raw I/O is used at CERN as development tool to help prototyping White
+Rabbit hardware and software; the SPEC is the first White Rabbit Node
+available.
+
+The main target of this code are PCI-E boards based on GN4124,
+but
 there is little stuff here that is specific to the gennum chip -- mainly
 it's the firmware loader.
 
@@ -712,34 +716,18 @@ your @i{hotplug} or @i{udevd} is configured.  The firmware-loader
 mechanism of the kernel arranges for the file to be made available to
 @i{rawrabbit}, whatever the file name.
 
-The current version is still too verbose in its messages, but this is
-work in progress so you'll forgive me. This is for example what I get
-then loading the module with a correct firmware file:
+The current set of messages in this versions is like this:
 
-@c FIXME
 @smallexample
-[ 3048.954185] rr_ask_firmware: called with preempt_cont == 0x00000001
-[ 3048.960525] rr_ask_firmware: current = 3061: insmod
-[ 3048.965486] rr_load_firmware: rrabbit-1a39:0004-1a39:0004@0001:0000
-[ 3048.971834] rr_load_firmware: called with preempt_cont == 0x00000000
-[ 3048.978342] rr_load_firmware: current = 13: events/2
-[ 3048.983441] request firmware returned 0
-[ 3049.048928] rr_loader_complete: called with preempt_cont == 0x00000000
-[ 3049.055572] rr_loader_complete: current = 3066: firmware/rrabbi
-[ 3049.061527] eda3a3c0: size 594412 (0x911ec), data f8b02000
-[ 3049.067045] programming with bar4 @ fe7ff000, vaddr f8494000
-[ 3050.574029] __rr_gennum_load: 220: done after 148603
+[ 1550.731611] request firmware "rrabbit-1a39:0004-1a39:0004@0002:0000": 0 (Succ
+ess)
+[ 1550.740182] rr_loader_complete: got firmware file, 1484404 (0x16a674) bytes
+[ 1550.938207] __rr_gennum_load: done after 371101 writes
 @end smallexample
 
-In the message above, you can see both the file name (always starts
-with @i{rrabbit-1a39:0004}) and the context of execution: @i{current}
-is the current process, and as you see a new kernel thread is created
-to run the completion function of the loading mechanism (here
-the @i{pid} is 3066 and the name is @i{firmware/rrabbi} -- only the
-leading 15 bytes of the name are printed.  The final @i{done after 148603}
-reports that the @i{done} bit in Gennum registers became true after
-writing that number of 32-bit words. Hopefully, this matches the file
-size divided by 4.
+The three lines report the name of the file being requested,
+completion of loading from user space and completion of programming
+the FPGA.
 
 This version of the package allows changing the file name for the
 firmware at will (but it doesn't allow picking it from a different
@@ -761,28 +749,38 @@ vendor:device or bus:devfn. Trailing spaces and newlines are allowed,
 as the module removed them automatically; other @code{%} escape on the
 other hand are currently forbidden, and result in an error.
 
-The version string can be changed at load time as a module parameter,
-or later by writing in @code{/sys/module/rawrabbit/fwname}. When changing
-the content of the file, a new firmware-load action is triggered, so
-you don't need to rebind the device (may I say I dislike this feature?
-you may just @code{rrcmd 1a39:0004} or rebind in @i{sysfs}).
-
-The driver tries to check the @i{fwname} string: if it's too long or
-uses a wrong format, writing it is refused and the previous name
-remains.  I fear, though, that there may be some buglet about
-allocation/deallocation, so you'd better not write wrong names, to be
-safe.
+@c The version string can be changed at load time as a module parameter,
+@c or later by writing in @code{/sys/module/rawrabbit/fwname}. When changing
+@c the content of the file, a new firmware-load action is triggered, so
+@c you don't need to rebind the device (may I say I dislike this feature?
+@c you may just @code{rrcmd 1a39:0004} or rebind in @i{sysfs}).
+@c 
+@c The driver tries to check the @i{fwname} string: if it's too long or
+@c uses a wrong format, writing it is refused and the previous name
+@c remains.  I fear, though, that there may be some buglet about
+@c allocation/deallocation, so you'd better not write wrong names, to be
+@c safe.
 
 This is an example session:
 @smallexample
    tornado.root# insmod kernel/rawrabbit.ko fwname="fw-%P"
-   [22194.161358] rr_load_firmware: fw-1a39:0004
+   [ 3683.393744] request firmware "fw-1a39:0004": 0 (Success)
+   [ 3683.397346] rr_loader_complete: no firmware
    tornado.root# cat /sys/module/rawrabbit/parameters/fwname
    fw-%P
-   tornado.root# echo -n "rabbit-%P-%p-bus-%b" \
-           > /sys/module/rawrabbit/parameters/f
-   [22898.924501] rr_load_firmware: rabbit-1a39:0004-1a39:0004-bus-0001:0000
 @end smallexample
+
+The special name @code{none} is used to prevent firmware loading:
+
+@smallexample
+   tornado.root# insmod kernel/rawrabbit.ko fwname="none"
+   [ 3757.287217] rr_load_firmware: not loading firmware "none"
+@end smallexample
+
+Previous versions of the package allowed writing to
+@code{/sys/module/rawrabbit/parameters/fwname} to force a reload of the same
+or a different file, but this is currently not supported because I had
+to hack in some internals which changed after 2.6.35.
 
 @c ==========================================================================
 @node The Firmware File Format, Working Without Udev, The Firmware File Name, Firmware Loader
