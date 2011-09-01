@@ -56,8 +56,6 @@ int main(int argc, char **argv)
    		dumpfile = argv[2];
 	else if(argc==3)
     addr = atoi(argv[2]);
-   		
-
 
   spec = open(DEVNAME, O_RDWR);
   if(spec < 0)
@@ -145,7 +143,7 @@ int dump_to_file(int spec, char *filename, unsigned int baseaddr)
   struct rr_iocmd iocmd;
   int ret;
   FILE *f= fopen(filename,"wb");
-  
+
   if(!f)
   return -1;
 
@@ -161,7 +159,7 @@ int dump_to_file(int spec, char *filename, unsigned int baseaddr)
     ret = ioctl(spec, RR_READ, &iocmd);
 	word = conv_endian(iocmd.data32);
 	fwrite(&word, 4, 1, f);
-	
+
 	bytes+=4;
 
   }
@@ -226,7 +224,7 @@ int rst_zpu(int spec, int rst)
   iocmd.address |= __RR_SET_BAR(0); //bar0
   iocmd.datasize = 4;
   iocmd.data32 = rst;
-  
+
   if( ioctl(spec, RR_WRITE, &iocmd) < 0)
   {
     perror("Could not reset ZPU");
