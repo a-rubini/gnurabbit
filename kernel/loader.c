@@ -183,6 +183,11 @@ void rr_load_firmware(struct work_struct *work)
 		dev_err(&pdev->dev, "Wrong fwname: \"%s\"\n", rr_fwname);
 		return;
 	}
+	if (!strcmp(fwname, "none")) {
+		printk("%s: not loading firmware \"none\"\n", __func__);
+		return;
+	}
+
 	if (0)
 		printk("%s: %s\n", __func__, fwname);
 
@@ -225,8 +230,8 @@ static int __rr_gennum_load(struct rr_dev *dev, const void *data, int size8)
 	void __iomem *bar4 = dev->remap[2]; /* remap == bar0, bar2, bar4 */
 
 	if (0)
-		printk("programming with bar4 @ %x, vaddr %p\n",
-		       dev->area[2]->start, bar4);
+		printk("programming with bar4 @ %lx,, vaddr %p\n",
+		       (unsigned long)(dev->area[2]->start), bar4);
 
 	/* Ok, now call register access, which lived elsewhere */
 	wrote = loader_low_level( 0 /* unused fd */, bar4, data, size8);
