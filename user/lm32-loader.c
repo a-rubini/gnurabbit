@@ -131,7 +131,8 @@ int copy(int spec, int srcbin, unsigned int baseaddr)
       perror("Error while writing to SPEC");
       return -1;
     }
-    printf(".");
+    if ((bytes & 0x7ff) == 0)
+	    printf(".");
   }
 
   return bytes;
