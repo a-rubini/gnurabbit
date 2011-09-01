@@ -9,9 +9,9 @@
 #include "rawrabbit.h"
 #include "loader-ll.h"
 
+/* These must be set to choose the FPGA configuration mode */
 #define GPIO_BOOTSEL0 15
 #define GPIO_BOOTSEL1 14
-
 
 static inline uint8_t reverse_bits8(uint8_t x)
 {
@@ -40,14 +40,14 @@ static uint32_t unaligned_bitswap_le32(const uint32_t *ptr32)
 
 static inline void gpio_out(int fd, void __iomem *bar4, const uint32_t addr, const int bit, const int value)
 {
-    uint32_t reg;
+	uint32_t reg;
 
-    reg = lll_read(fd, bar4, addr);
+	reg = lll_read(fd, bar4, addr);
 
-    if(value)
-        reg |= (1<<bit);
-    else
-        reg &= ~(1<<bit);
+	if(value)
+		reg |= (1<<bit);
+	else
+		reg &= ~(1<<bit);
 
 	lll_write(fd, bar4, reg, addr);
 }
@@ -64,13 +64,13 @@ int loader_low_level(int fd, void __iomem *bar4, const void *data, int size8)
 	int ctrl = 0, i, done = 0, wrote = 0;
 
 
-/* configure the Gennum GPIO to select GN4124->FPGA configuration mode */
-    gpio_out(fd, bar4, GNGPIO_DIRECTION_MODE, GPIO_BOOTSEL0, 0);
-    gpio_out(fd, bar4, GNGPIO_DIRECTION_MODE, GPIO_BOOTSEL1, 0);
-    gpio_out(fd, bar4, GNGPIO_OUTPUT_ENABLE, GPIO_BOOTSEL0, 1);
-    gpio_out(fd, bar4, GNGPIO_OUTPUT_ENABLE, GPIO_BOOTSEL1, 1);
-    gpio_out(fd, bar4, GNGPIO_OUTPUT_VALUE, GPIO_BOOTSEL0, 1);
-    gpio_out(fd, bar4, GNGPIO_OUTPUT_VALUE, GPIO_BOOTSEL1, 0);
+	/* configure Gennum GPIO to select GN4124->FPGA configuration mode */
+	gpio_out(fd, bar4, GNGPIO_DIRECTION_MODE, GPIO_BOOTSEL0, 0);
+	gpio_out(fd, bar4, GNGPIO_DIRECTION_MODE, GPIO_BOOTSEL1, 0);
+	gpio_out(fd, bar4, GNGPIO_OUTPUT_ENABLE, GPIO_BOOTSEL0, 1);
+	gpio_out(fd, bar4, GNGPIO_OUTPUT_ENABLE, GPIO_BOOTSEL1, 1);
+	gpio_out(fd, bar4, GNGPIO_OUTPUT_VALUE, GPIO_BOOTSEL0, 1);
+	gpio_out(fd, bar4, GNGPIO_OUTPUT_VALUE, GPIO_BOOTSEL1, 0);
 
 
 	lll_write(fd, bar4, 0x00, FCL_CLK_DIV);
