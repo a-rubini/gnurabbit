@@ -31,6 +31,7 @@ struct rr_dev {
 	struct mutex		mutex;
 	wait_queue_head_t	 q;
 	void			*dmabuf;
+	char			*fwname;
 	struct timespec		 irqtime;
 	unsigned long		 irqcount;
 	struct completion	 complete;
@@ -41,6 +42,8 @@ struct rr_dev {
 	const struct firmware	*fw;
 	int			 usecount;
 };
+
+extern char *rr_fwname; /* module parameter. If "" then defaults apply */
 
 #define RR_FLAG_REGISTERED	0x00000001
 #define RR_FLAG_IRQDISABLE	0x00000002

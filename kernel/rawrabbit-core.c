@@ -125,6 +125,11 @@ static int rr_pciprobe (struct pci_dev *pdev, const struct pci_device_id *id)
 	dev->devsel->bus = pdev->bus->number;
 	dev->devsel->devfn = pdev->devfn;
 
+	/* The firmware is a module parameter, if unset use default */
+	dev->fwname = rr_fwname;
+	if (!dev->fwname[0])
+		dev->fwname = RR_DEFAULT_FWNAME;
+
 	i = pci_enable_device(pdev);
 	if (i < 0)
 	    return i;

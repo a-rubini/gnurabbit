@@ -67,7 +67,7 @@ static int param_get_par_fwname(char *buffer, struct kernel_param *kp)
 
 //#define param_check_par_fwname(name, p) __param_check(name, p, char *)
 
-static char *rr_fwname = RR_DEFAULT_FWNAME;
+char *rr_fwname = "";
 module_param_named(fwname, rr_fwname, charp, 0644);
 
 static int rr_expand_name(struct rr_dev *dev, char *outname)
@@ -75,7 +75,7 @@ static int rr_expand_name(struct rr_dev *dev, char *outname)
 	struct rr_devsel *devsel = dev->devsel;
 	char *si, *so = outname;
 
-	for (si = rr_fwname; *si ; si++) {
+	for (si = dev->fwname; *si ; si++) {
 		if (so - outname >= RR_MAX_FWNAME_SIZE)
 			return -ENOSPC;
 		if (*si != '%') {
