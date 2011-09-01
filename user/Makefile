@@ -11,7 +11,7 @@ STRIP		= $(CROSS_COMPILE)strip
 OBJCOPY		= $(CROSS_COMPILE)objcopy
 OBJDUMP		= $(CROSS_COMPILE)objdump
 
-ALL = rrcmd flip loadfile
+ALL = rrcmd loadfile
 
 all: $(ALL)
 
