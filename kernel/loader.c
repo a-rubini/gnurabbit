@@ -115,7 +115,7 @@ static int rr_expand_name(struct rr_dev *dev, char *outname)
 static void __rr_report_env(const char *func)
 {
 	/* Choose 0 or 1 in the if below, to turn on/off without warnings */
-	if (1) {
+	if (0) {
 		printk("%s: called with preempt_cont == 0x%08x\n", func,
 		       preempt_count());
 		printk("%s: current = %i: %s\n", func,
@@ -138,9 +138,8 @@ static void rr_loader_complete(const struct firmware *fw, void *context)
 	__rr_report_env(__func__); /* Here, preempt count is 0: good! */
 
 	if (fw) {
-		pr_info("%s: %p: size %i (0x%x), data %p\n", __func__, fw,
-			fw ? fw->size : 0, fw ? fw->size : 0,
-			fw ? fw->data : 0);
+		pr_info("%s: got firmware file, %i (0x%x) bytes\n", __func__,
+			fw ? fw->size : 0, fw ? fw->size : 0);
 	} else {
 		pr_warning("%s: no firmware\n", __func__);
 		return;
@@ -184,14 +183,15 @@ void rr_load_firmware(struct work_struct *work)
 		dev_err(&pdev->dev, "Wrong fwname: \"%s\"\n", rr_fwname);
 		return;
 	}
-	if (1)
+	if (0)
 		printk("%s: %s\n", __func__, fwname);
 
 	__rr_report_env(__func__);
 	err = request_firmware_nowait(THIS_MODULE, 1, fwname, &pdev->dev,
 				      __RR_GFP_FOR_RFNW(GFP_KERNEL)
 				      dev, rr_loader_complete);
-	printk("request firmware returned %i\n", err);
+	printk("request firmware \"%s\": %i (%s)\n", fwname, err,
+	       err ? "Error" : "Success");
 }
 
 /* This function is called by the PCI probe function. */
@@ -224,8 +224,9 @@ static int __rr_gennum_load(struct rr_dev *dev, const void *data, int size8)
 	unsigned long j;
 	void __iomem *bar4 = dev->remap[2]; /* remap == bar0, bar2, bar4 */
 
-	printk("programming with bar4 @ %x, vaddr %p\n",
-	       dev->area[2]->start, bar4);
+	if (0)
+		printk("programming with bar4 @ %x, vaddr %p\n",
+		       dev->area[2]->start, bar4);
 
 	/* Ok, now call register access, which lived elsewhere */
 	wrote = loader_low_level( 0 /* unused fd */, bar4, data, size8);
@@ -237,16 +238,16 @@ static int __rr_gennum_load(struct rr_dev *dev, const void *data, int size8)
 	while(!done) {
 		i = readl(bar4 + FCL_IRQ);
 		if (i & 0x8) {
-			printk("%s: %i: done after %i\n", __func__, __LINE__,
+			printk("%s: done after %i writes\n", __func__,
 			       wrote);
 			done = 1;
 		} else if( (i & 0x4) && !done) {
-			printk("%s: %i: error after %i\n", __func__, __LINE__,
+			printk("%s: error after %i writes\n", __func__,
 			       wrote);
 			return -ETIMEDOUT;
 		}
 		if (time_after(jiffies, j)) {
-			printk("%s: %i: tout after %i\n", __func__, __LINE__,
+			printk("%s: timeout after %i writes\n", __func__,
 			       wrote);
 			return -ETIMEDOUT;
 		}
