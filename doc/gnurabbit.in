@@ -429,6 +429,8 @@ sample tools.  The helper for @i{rawrabbit} (@i{rr}) is called @i{rrcmd}.
 
 @menu
 * rrcmd::                       
+* loadfile::                    
+* lm32-loader::                 
 @end menu
 
 @c --------------------------------------------------------------------------
@@ -564,6 +566,35 @@ as follows:
     buf 0x00007000: pfn 0x00029843, addr 0x000029843000
     buf 0x00008000: pfn 0x00029842, addr 0x000029842000
     buf 0x00009000: pfn 0x0002dbab, addr 0x00002dbab000
+@end example
+
+@c --------------------------------------------------------------------------
+@node loadfile
+@subsection loadfile
+
+The program is a user-space firmware loader. It uses the same low-level
+code as the kernel module, buf if you want to load your firmware at
+a later time instead of doing it at @i{insmod} time, you can run this
+program:
+
+@example
+   tornado.root#./user/loadfile ~/spec_top.bin
+   Programming 1484404 bytes of binary gateware
+@end example
+
+@c --------------------------------------------------------------------------
+@node lm32-loader
+@subsection lm32-loader
+
+The program, written by Grzegorz Daniluk, stops the LM32 soft-core,
+loads a new RAM image to the FPGA and then restarts the CPU. This is
+currently working with the SPEC board:
+
+@example
+   tornado.root# ./user/lm32-loader ~/wrc.bin
+   Writing memory: .......................Done
+   Wrote 48876 bytes
+   Verifing: OK !
 @end example
 
 @c ==========================================================================
