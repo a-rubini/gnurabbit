@@ -151,7 +151,11 @@ static int rr_pciprobe (struct pci_dev *pdev, const struct pci_device_id *id)
 
 	complete(&dev->complete);
 
-	/* Finally, ask for a copy of the firmware for this device */
+	/*
+	 * Finally, ask for a copy of the firmware for this device,
+	 * _and_ a copy of the lm32 program
+	 */
+	dev->load_program = spec_ask_program;
 	rr_ask_firmware(dev);
 
 	return 0;

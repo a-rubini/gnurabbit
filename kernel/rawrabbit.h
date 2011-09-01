@@ -59,6 +59,9 @@ extern char *rr_fwname; /* module parameter. If "" then defaults apply */
 extern void rr_ask_firmware(struct rr_dev *dev);
 extern void rr_load_firmware(struct work_struct *work);
 
+/* And, for the spec only, this is in ./spec-loader.c */
+extern void spec_ask_program(struct rr_dev *dev);
+
 #endif /* __KERNEL__ */
 
 /* By default, the driver registers for this vendor/devid */
