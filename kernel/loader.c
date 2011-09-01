@@ -164,6 +164,9 @@ static void rr_loader_complete(const struct firmware *fw, void *context)
 	if (ret)
 		pr_err("%s: loading returned error %i\n", __func__, ret);
 	dev->fw = NULL;
+
+	/* Tell we are done, so the spec can load the next blob */
+	complete(&dev->fw_load);
 }
 
 /*
@@ -192,11 +195,20 @@ void rr_load_firmware(struct work_struct *work)
 		printk("%s: %s\n", __func__, fwname);
 
 	__rr_report_env(__func__);
+
+	init_completion(&dev->fw_load);
 	err = request_firmware_nowait(THIS_MODULE, 1, fwname, &pdev->dev,
 				      __RR_GFP_FOR_RFNW(GFP_KERNEL)
 				      dev, rr_loader_complete);
 	printk("request firmware \"%s\": %i (%s)\n", fwname, err,
 	       err ? "Error" : "Success");
+
+	/* Now, wait for loading to end. So another binary can be loaded */
+	wait_for_completion(&dev->fw_load);
+
+	/* The spec need another binary. It does so by filling a ptr */
+	if (dev->load_program)
+		dev->load_program(dev);
 }
 
 /* This function is called by the PCI probe function. */

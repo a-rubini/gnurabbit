@@ -20,6 +20,7 @@
 #include <linux/workqueue.h>
 #include <linux/firmware.h>
 #include <linux/wait.h>
+#include <linux/completion.h>
 
 struct rr_devsel;
 
@@ -40,6 +41,8 @@ struct rr_dev {
 	unsigned long		 flags;
 	struct work_struct	work;
 	const struct firmware	*fw;
+	struct completion	 fw_load;
+	void			(*load_program)(struct rr_dev *); /* lm32 */
 	int			 usecount;
 };
 
