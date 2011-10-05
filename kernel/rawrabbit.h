@@ -44,6 +44,11 @@ struct rr_dev {
 	struct completion	 fw_load;
 	void			(*load_program)(struct rr_dev *); /* lm32 */
 	int			 usecount;
+#ifdef IS_SPEC_DEMO
+	struct miscdevice	 misc;
+	char			 miscname[16]; /* "spec-demo-<bus>-<slot> */
+	struct list_head	 list;
+#endif
 };
 
 extern char *rr_fwname; /* module parameter. If "" then defaults apply */
@@ -53,7 +58,7 @@ extern char *rr_fwname; /* module parameter. If "" then defaults apply */
 #define RR_FLAG_IRQREQUEST	0x00000002
 
 
-#define RR_PROBE_TIMEOUT	(HZ/10)		/* for pci_register_drv */
+#define RR_PROBE_TIMEOUT	(HZ)		/* for pci_register_drv */
 
 /* These two live in ./loader.c */
 extern void rr_ask_firmware(struct rr_dev *dev);
