@@ -42,7 +42,7 @@
 
 @setchapternewpage off
 
-@set update-month September 2011
+@set update-month October 2011
 
 @finalout
 
@@ -926,7 +926,8 @@ a command like:
 
 The kernel module @i{spec-demo.ko} is similar to the @i{rawrabbit.ko}
 driver, but is somewhat specific for the SPEC device.  The current
-implementation, however is mainly a quick hack to see how
+implementation, however is mainly an hack (but not a quick one any more)
+to see how
 SPEC-specific stuff works in practice. Most likely the SPEC driver
 will be split to a separate package over time.
 
@@ -937,6 +938,7 @@ is not available.
 @menu
 * Differences from rawrabbit::  
 * Module parameters::           
+* Runing Several SPEC Boards::  
 * Future developments::         
 @end menu
 
@@ -951,8 +953,11 @@ The driver is different from the @i{rawrabbit} in these aspects:
 @item There is no concept of binding.
 
 	The driver registers as a driver for the gennum chip alone.
-        Again, at this point it assumes there is only one such card in the
-        system.
+
+@item Several boards are supported.
+
+	If more than one SPEC is there, all of them are supported.
+        See below for details.
 
 @item No interrupts are supported.
 
@@ -995,8 +1000,8 @@ binary files in place in @i{/lib/firmware}:
 @end smallexample
 
 @c ==========================================================================
-@node Module parameters
-@section Module parameters
+@node Module Parameters
+@section Module Parameters
 
 The following module parameters are recognized at module load time:
 
@@ -1006,15 +1011,59 @@ The following module parameters are recognized at module load time:
 
 	The string passed is used as name for the gateware file. The
         default is @code{spec_top.bin}. If you pass @code{none}, no
-        file is loaded.
+        file is loaded. The same ``@code{%}'' sequences as for @i{rawrabbit}
+        are supported. Thus, you can use ``@code{spec-demo-%b}'' to
+        use bus-addressing in file naming. For me, for example, this
+        requests @code{spec-demo-0002:0000} and @code{spec-demo-0003:0000},
+        so each SPEC can use a different firmware file. If the file
+        is not existent or has zero size, no loading is performed.
 
 @item program=
 
 	The string is used as the name for the LM32 program file. The
         default is @code{wrc.bin}. If you pass @code{none}, no
-        file is loaded.
+        file is loaded. Currently not ``@code{%}'' expansion is performed
+        here (this is currently an outstanding bug).
+@c FIME: %b in program name
 
 @end table
+
+@c ==========================================================================
+@node Runing Several SPEC Boards
+@section Running Several SPEC Boards
+
+The current version of the driver works with any number of SPEC boards.
+To load a different firmware file for each physical board, see
+@ref{Module Parameters} above.
+
+Regarding char devices, to keep compatible with previous versions, the
+first board found can be see with @code{/dev/rawrabbit}, as usual.
+However, to help you tell which is which, a char device node is created
+for each board found, and such name include the bus and devfn numbers,
+with the same format used by ``@code{%b}'' to build the file name.
+
+For example, this is what I have in a system where two PCI-Express
+slots are seen both as slot zero of two board-specific busses:
+
+@example
+   spusa$ sort -n /proc/misc | tail -3
+   442 rawrabbit
+   444 spec-demo-0002-0000
+   445 spec-demo-0003-0000
+@end example
+
+The user space tools use the @code{RR_DEVNAME} environment variable to
+override the default ``@code{/dev/rawrabbit}'':
+
+For example, to write ``@code{A}'' (0x41) to the UART of the internal
+LM32 processor, I can use
+
+@example
+  RR_DEVNAME=/dev/spec-demo-0002-0000 ./user/rrcmd w4 0:0xe0808 0x41
+@end example
+
+You can ``@code{export DEVNAME=} to have it persistent in the current
+session
 
 @c ==========================================================================
 @node Future developments
