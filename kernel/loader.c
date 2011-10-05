@@ -115,7 +115,7 @@ static int rr_expand_name(struct rr_dev *dev, char *outname)
 static void __rr_report_env(const char *func)
 {
 	/* Choose 0 or 1 in the if below, to turn on/off without warnings */
-	if (0) {
+	if (1) {
 		printk("%s: called with preempt_cont == 0x%08x\n", func,
 		       preempt_count());
 		printk("%s: current = %i: %s\n", func,
@@ -191,8 +191,9 @@ void rr_load_firmware(struct work_struct *work)
 		return;
 	}
 
-	if (0)
-		printk("%s: %s\n", __func__, fwname);
+
+	if (1)
+		printk("%s: %p, %s\n", __func__, pdev, fwname);
 
 	__rr_report_env(__func__);
 
