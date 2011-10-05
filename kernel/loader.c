@@ -72,7 +72,7 @@ module_param_named(fwname, rr_fwname, charp, 0644);
 
 static int rr_expand_name(struct rr_dev *dev, char *outname)
 {
-	struct rr_devsel *devsel = dev->devsel;
+	struct pci_dev *pdev = dev->pdev;
 	char *si, *so = outname;
 
 	for (si = dev->fwname; *si ; si++) {
@@ -88,15 +88,15 @@ static int rr_expand_name(struct rr_dev *dev, char *outname)
 		switch(*si) {
 		case 'P': /* PCI vendor:device */;
 			so += sprintf(so, "%04x:%04x",
-				devsel->vendor, devsel->device);
+				pdev->vendor, pdev->device);
 			break;
 		case 'p': /* PCI subvendor:subdevice */;
 			so += sprintf(so, "%04x:%04x",
-				devsel->subvendor, devsel->subdevice);
+				pdev->subsystem_vendor, pdev->subsystem_device);
 			break;
 		case 'b': /* BUS id */
 			so += sprintf(so, "%04x:%04x",
-				devsel->bus, devsel->devfn);
+				pdev->bus->number, pdev->devfn);
 			break;
 		case '%':
 			*so++ = '%';
@@ -241,6 +241,8 @@ static int __rr_gennum_load(struct rr_dev *dev, const void *data, int size8)
 	unsigned long j;
 	void __iomem *bar4 = dev->remap[2]; /* remap == bar0, bar2, bar4 */
 
+	if (!size8)
+		return 0; /* no size: success */
 	if (0)
 		printk("programming with bar4 @ %lx,, vaddr %p\n",
 		       (unsigned long)(dev->area[2]->start), bar4);
