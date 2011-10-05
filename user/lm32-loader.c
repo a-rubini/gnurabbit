@@ -29,7 +29,7 @@
 #include<sys/ioctl.h>
 #include"rawrabbit.h"
 
-#define DEVNAME "/dev/rawrabbit"
+#define DEFAULT_RR_DEVNAME "/dev/rawrabbit"
 #define RST_ADDR 0xE2000
 
 int rst_zpu(int spec, int rst);
@@ -38,12 +38,17 @@ int verify(int spec, int srcbin, unsigned int baseaddr);
 int conv_endian(int x);
 int dump_to_file(int spec, char *filename, unsigned int baseaddr);
 
+char *devname;
+
 int main(int argc, char **argv)
 {
   unsigned int addr = 0x80000;
   int spec, srcbin;
   unsigned int bytes;
   char *dumpfile =NULL;
+
+  devname = getenv("RR_DEVNAME");
+  if (!devname) devname = DEFAULT_RR_DEVNAME;
 
   if(argc<2)
   {
@@ -58,7 +63,7 @@ int main(int argc, char **argv)
 	else if(argc==3)
     addr = atoi(argv[2]);
 
-  spec = open(DEVNAME, O_RDWR);
+  spec = open(devname, O_RDWR);
   if(spec < 0)
   {
     perror("Could not open device");

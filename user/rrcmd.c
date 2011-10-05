@@ -21,9 +21,9 @@
 #include <sys/ioctl.h>
 #include "rawrabbit.h"
 
-#define DEVNAME "/dev/rawrabbit"
+#define DEFAULT_RR_DEVNAME "/dev/rawrabbit"
 
-char *prgname;
+char *prgname, *devname;
 
 void help(void)
 {
@@ -76,7 +76,7 @@ int parse_devsel(int fd, char *arg)
 
 	/* Now try to do the change */
 	if (ioctl(fd, RR_DEVSEL, &devsel) < 0) {
-		fprintf(stderr, "%s: %s: ioctl(DEVSEL): %s\n", prgname, DEVNAME,
+		fprintf(stderr, "%s: %s: ioctl(DEVSEL): %s\n", prgname, devname,
 			strerror(errno));
 		return -EIO;
 	}
@@ -194,11 +194,12 @@ int main(int argc, char **argv)
 	struct rr_devsel devsel;
 	int fd, ret = -EINVAL;
 
-	prgname = argv[0];
+	devname = getenv("RR_DEVNAME");
+	if (!devname) devname = DEFAULT_RR_DEVNAME;
 
-	fd = open(DEVNAME, O_RDWR);
+	fd = open(devname, O_RDWR);
 	if (fd < 0) {
-		fprintf(stderr, "%s: %s: %s\n", prgname, DEVNAME,
+		fprintf(stderr, "%s: %s: %s\n", prgname, devname,
 			strerror(errno));
 		exit(1);
 	}
@@ -214,14 +215,14 @@ int main(int argc, char **argv)
 	if (argc > 1 && !strcmp(argv[1], "info")) {
 		if (ioctl(fd, RR_DEVGET, &devsel) < 0) {
 			if (errno == ENODEV) {
-				printf("%s: not bound\n", DEVNAME);
+				printf("%s: not bound\n", devname);
 				exit(0);
 			}
 			fprintf(stderr, "%s: %s: ioctl(DEVGET): %s\n", prgname,
-				DEVNAME, strerror(errno));
+				devname, strerror(errno));
 			exit(1);
 		}
-		printf("%s: bound to %04x:%04x/%04x:%04x@%04x:%04x\n", DEVNAME,
+		printf("%s: bound to %04x:%04x/%04x:%04x@%04x:%04x\n", devname,
 		       devsel.vendor, devsel.device,
 		       devsel.subvendor, devsel.subdevice,
 		       devsel.bus, devsel.devfn);

@@ -15,7 +15,9 @@
 #include "rawrabbit.h"
 #include "loader-ll.h"
 
-#define DEVNAME "/dev/rawrabbit"
+#define DEFAULT_RR_DEVNAME "/dev/rawrabbit"
+
+char *devname;
 
 static char buf[64*1024*1024]; /* 64 MB binary? */
 
@@ -24,6 +26,9 @@ int main(int argc, char **argv)
 	int fd;
 	FILE *f;
 	int nbytes, rval;
+
+	devname = getenv("RR_DEVNAME");
+	if (!devname) devname = DEFAULT_RR_DEVNAME;
 
 	if (argc != 2) {
 		fprintf(stderr, "%s: Use \"%s <firmware-file>\n",
@@ -38,10 +43,10 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 
-	fd = open(DEVNAME, O_RDWR);
+	fd = open(devname, O_RDWR);
 	if (fd < 0) {
 		fprintf(stderr, "%s: %s: %s\n",
-			argv[0], DEVNAME, strerror(errno));
+			argv[0], devname, strerror(errno));
 		exit(1);
 	}
 	nbytes = fread(buf, 1, sizeof(buf), f);
