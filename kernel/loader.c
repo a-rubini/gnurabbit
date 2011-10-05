@@ -142,7 +142,7 @@ static void rr_loader_complete(const struct firmware *fw, void *context)
 			fw ? fw->size : 0, fw ? fw->size : 0);
 	} else {
 		pr_warning("%s: no firmware\n", __func__);
-		return;
+		goto out;
 	}
 
 	/*
@@ -166,6 +166,7 @@ static void rr_loader_complete(const struct firmware *fw, void *context)
 	dev->fw = NULL;
 
 	/* Tell we are done, so the spec can load the next blob */
+ out:
 	complete(&dev->fw_load);
 }
 
