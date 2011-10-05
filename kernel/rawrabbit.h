@@ -46,7 +46,7 @@ struct rr_dev {
 	int			 usecount;
 #ifdef IS_SPEC_DEMO
 	struct miscdevice	 misc;
-	char			 miscname[16]; /* "spec-demo-<bus>-<slot> */
+	char			 miscname[32]; /* "spec-demo-<bus>-<slot> */
 	struct list_head	 list;
 #endif
 };

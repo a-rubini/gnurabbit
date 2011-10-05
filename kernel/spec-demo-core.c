@@ -97,7 +97,7 @@ static int rr_pciprobe (struct pci_dev *pdev, const struct pci_device_id *id)
 	INIT_WORK(&dev->work, rr_load_firmware);
 	INIT_LIST_HEAD(&dev->list);
 
-	sprintf(dev->miscname, "spec-demo-%i-%i",
+	snprintf(dev->miscname, sizeof(dev->miscname), "spec-demo-%04x-%04x",
 		pdev->bus->number, pdev->devfn);
 	dev->misc.name = dev->miscname;
 	i = misc_register(&dev->misc);
