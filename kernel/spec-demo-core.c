@@ -28,8 +28,12 @@
 #include <linux/mutex.h>
 #include <asm/uaccess.h>
 
+#define IS_SPEC_DEMO /* hack! */
 #include "rawrabbit.h"
+#undef IS_SPEC_DEMO
 #include "compat.h"
+
+#define RR_SINGLE_MINOR 442 /* This is the minor for the standalong thing */
 
 static int rr_vendor = RR_DEFAULT_VENDOR;
 static int rr_device = RR_DEFAULT_DEVICE;
@@ -39,7 +43,10 @@ module_param_named(device, rr_device, int, 0);
 static int rr_bufsize = RR_DEFAULT_BUFSIZE;
 module_param_named(bufsize, rr_bufsize, int, 0);
 
-struct rr_dev rr_dev; /* defined later */
+/* stuff defined later that we need in the first functions... */
+static struct rr_dev rr_dev_template;
+static struct rr_dev *rr_first_dev;
+static struct list_head rr_dev_list;
 
 /*
  * We have a PCI driver, used to access the BAR areas.
@@ -61,58 +68,48 @@ static void rr_fill_table(struct rr_dev *dev)
 	dev->id_table->device = dev->devsel->device;
 }
 
-static int rr_fill_table_and_probe(struct rr_dev *dev)
-{
-	int ret;
-
-	/* This needs no locks, as it's called in semaphorized process ctxt */
-	if (dev->flags & RR_FLAG_REGISTERED) {
-		pci_unregister_driver(dev->pci_driver);
-		dev->flags &= ~ RR_FLAG_REGISTERED;
-	}
-
-	rr_fill_table(dev);
-
-	/* Use the completion mechanism to be notified of probes */
-	init_completion(&dev->complete);
-	ret = pci_register_driver(dev->pci_driver);
-	if (ret == 0)
-		dev->flags |= RR_FLAG_REGISTERED;
-
-	if (ret < 0) {
-		printk(KERN_ERR "%s: Can't register pci driver\n",
-		       KBUILD_MODNAME);
-		return ret;
-	}
-	/* This ret is 0 (timeout) or positive */
-	ret = wait_for_completion_timeout(&dev->complete, RR_PROBE_TIMEOUT);
-	if (!ret) {
-		printk("%s: Warning: no device found\n", __func__);
-	}
-	return ret;
-}
 
 /* The probe and remove function can't get locks, as it's already locked */
 static int rr_pciprobe (struct pci_dev *pdev, const struct pci_device_id *id)
 {
-	struct rr_dev *dev = &rr_dev;
+	struct rr_dev *dev;
 	int i;
 
-	/* Only manage one device, refuse further probes */
-	if (dev->pdev)
-		return -EBUSY;
-	/* vendor/device and subvendor/subdevice have already been matched */
-	if (dev->devsel->bus != RR_DEVSEL_UNUSED) {
-		if (dev->devsel->bus != pdev->bus->number)
-			return -ENODEV;
-		if (dev->devsel->devfn != pdev->devfn)
-			return -ENODEV;
+	printk("%s: %i %i\n", __func__, pdev->bus->number, pdev->devfn);
+	printk("%s: current %i (%s)\n", __func__, current->pid, current->comm);
+	dev = kmalloc(sizeof(*dev), GFP_KERNEL);
+	if (!dev)
+		return -ENOMEM;
+	dev->dmabuf = __vmalloc(rr_bufsize, GFP_KERNEL | __GFP_ZERO,
+				PAGE_KERNEL);
+	if (!dev->dmabuf) {
+		kfree(dev);
+		return -ENOMEM;
 	}
-	/* Record the informaztion in the local structure anyways */
-	dev->devsel->subvendor = pdev->subsystem_vendor;
-	dev->devsel->subdevice = pdev->subsystem_device;
-	dev->devsel->bus = pdev->bus->number;
-	dev->devsel->devfn = pdev->devfn;
+	if (!rr_first_dev)
+		rr_first_dev = dev;
+
+	/* So, we have a new device: init it and create its misc device */
+	rr_dev_template.misc.minor++;
+	*dev = rr_dev_template;
+	init_waitqueue_head(&dev->q);
+	mutex_init(&dev->mutex);
+	INIT_WORK(&dev->work, rr_load_firmware);
+	INIT_LIST_HEAD(&dev->list);
+
+	sprintf(dev->miscname, "spec-demo-%i-%i",
+		pdev->bus->number, pdev->devfn);
+	dev->misc.name = dev->miscname;
+	i = misc_register(&dev->misc);
+	if (i < 0) {
+		printk(KERN_ERR "%s: Can't register misc device %s\n",
+		       KBUILD_MODNAME, dev->miscname);
+		dev->misc.minor = 0; /* so we won't unregister */
+	}
+	list_add(&dev->list, &rr_dev_list);
+
+	pci_set_drvdata(pdev, dev);
+	printk("set_drvdata %p %p\n", pdev, dev);
 
 	/* The firmware is a module parameter, if unset use default */
 	dev->fwname = rr_fwname;
@@ -120,8 +117,11 @@ static int rr_pciprobe (struct pci_dev *pdev, const struct pci_device_id *id)
 		dev->fwname = "spec_top.bin";
 
 	i = pci_enable_device(pdev);
-	if (i < 0)
-	    return i;
+	if (i < 0) {
+		printk(KERN_WARNING "%s: can't enable device (got %i)\n",
+		       __func__, i);
+		/* continue anyways */
+	}
 
 	dev->pdev = pdev;
 
@@ -149,14 +149,25 @@ static int rr_pciprobe (struct pci_dev *pdev, const struct pci_device_id *id)
 						r->end + 1 - r->start);
 	}
 
-	complete(&dev->complete);
-
 	/*
 	 * Finally, ask for a copy of the firmware for this device,
 	 * _and_ a copy of the lm32 program
 	 */
 	dev->load_program = spec_ask_program;
-	rr_ask_firmware(dev);
+	if (1) {
+		int ret;
+
+		init_completion(&dev->complete);
+		rr_ask_firmware(dev);
+		ret = wait_for_completion_timeout(&dev->complete,
+						  RR_PROBE_TIMEOUT);
+		printk("%s: load_firmware: returned %i\n", __func__, ret);
+
+	} else {
+		/* Something I used to test probes are serialized */
+		set_current_state(TASK_INTERRUPTIBLE);
+		schedule_timeout(HZ);
+	}
 
 	return 0;
 }
@@ -164,15 +175,22 @@ static int rr_pciprobe (struct pci_dev *pdev, const struct pci_device_id *id)
 /* This function is called when the pcidrv is removed, with lock held */
 static void rr_pciremove(struct pci_dev *pdev)
 {
-	struct rr_dev *dev = &rr_dev;
+	struct rr_dev *dev = pci_get_drvdata(pdev);
 	int i;
 
+	printk("%s: %i %i\n", __func__, pdev->bus->number, pdev->devfn);
 	for (i = 0; i < 3; i++) {
 		iounmap(dev->remap[i]);		/* safe for NULL ptrs */
 		dev->remap[i] = NULL;
 		dev->area[i] = NULL;
 	}
+	list_del(&dev->list);
 	release_firmware(dev->fw);
+	vfree(dev->dmabuf);
+	if (dev->misc.minor) {
+		printk("deregister %i\n", dev->misc.minor);
+		misc_deregister(&dev->misc);
+	}
 	dev->fw = NULL;
 	dev->pdev = NULL;
 }
@@ -184,16 +202,29 @@ static struct pci_driver rr_pcidrv = {
 	.remove = rr_pciremove,
 };
 
-/* There is only one device by now; I didn't find how to associate to pcidev */
-static struct rr_devsel rr_devsel;
-/* The device can't be static. I need it in the module parameter */
-struct rr_dev rr_dev = {
-	.pci_driver = &rr_pcidrv,
+/*
+ * So this structure below is our internal device. We can support
+ * several boards but for compatibility we need a /dev/rawrabbit misc device.
+ * Thus, we have one misc per SPEC board, plus the generic one
+ */
+static struct rr_devsel rr_devsel; /* from rawrabbit: should die! */
+static struct file_operations rr_fops;
+static struct rr_dev rr_dev_template = {
+	//.pci_driver = &rr_pcidrv,
 	.id_table = rr_idtable,
-	.q = __WAIT_QUEUE_HEAD_INITIALIZER(rr_dev.q),
-	.mutex = __MUTEX_INITIALIZER(rr_dev.mutex),
 	.devsel = &rr_devsel,
-	.work = __WORK_INITIALIZER(rr_dev.work, rr_load_firmware),
+	.misc = {
+		.minor = RR_SINGLE_MINOR + 1, /* bah! */
+		.fops = &rr_fops,
+	}
+};
+static struct list_head rr_dev_list;
+static struct rr_dev *rr_first_dev;
+
+static struct miscdevice rr_single_misc = {
+	.minor = RR_SINGLE_MINOR,
+	.name = "rawrabbit",
+	.fops = &rr_fops,
 };
 
 
@@ -471,38 +502,7 @@ static long rr_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 	mutex_lock(&dev->mutex);
 
 	switch(cmd) {
-
-	case RR_DEVSEL:
-		/* If we are the only user, change device requested id */
-		if (dev->usecount > 1) {
-			printk("usecount %i\n", dev->usecount);
-			ret = -EBUSY;
-			break;
-		}
-		/* Warning: race: we can't take the lock */
-		*dev->devsel = karg.devsel;
-		ret = rr_fill_table_and_probe(dev);
-		if (!ret)
-			ret = -ENODEV; /* timeout */
-		else if (ret > 0)
-			ret = 0; /* success */
-		break;
-
-	case RR_DEVGET:
-		/* Return to user space the id of the current device */
-		if (!dev->pdev) {
-			ret = -ENODEV;
-			break;
-		}
-		memset(&karg.devsel, 0, sizeof(karg.devsel));
-		karg.devsel.vendor = dev->pdev->vendor;
-		karg.devsel.device = dev->pdev->device;
-		karg.devsel.subvendor = dev->pdev->subsystem_vendor;
-		karg.devsel.subdevice = dev->pdev->subsystem_device;
-		karg.devsel.bus = dev->pdev->bus->number;
-		karg.devsel.devfn = dev->pdev->devfn;
-		break;
-
+		/* There are no RR_DEVSEL and RR_DEVGET here */
 	case RR_READ:	/* Read a "word" of memory */
 	case RR_WRITE:	/* Write a "word" of memory */
 		ret = rr_do_iocmd(dev, cmd, &karg.iocmd);
@@ -554,7 +554,26 @@ static long rr_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
  */
 static int rr_open(struct inode *ino, struct file *f)
 {
-	struct rr_dev *dev = &rr_dev;
+	struct rr_dev *dev = NULL;
+	struct list_head *lptr;
+	int minor = iminor(ino);
+
+	printk("open for minor %i\n", minor);
+
+	if (minor == RR_SINGLE_MINOR) {
+		dev = rr_first_dev;
+		if (!dev)
+			return -ENODEV;
+	} else {
+		/* look for this minor in the list */
+		list_for_each(lptr, &rr_dev_list) {
+			dev = container_of(lptr, struct rr_dev, list);
+			if (dev->misc.minor != minor)
+				continue;
+		}
+		if (dev && dev->misc.minor != minor)
+			return -ENODEV;
+	}
 	f->private_data = dev;
 
 	mutex_lock(&dev->mutex);
@@ -721,18 +740,14 @@ static struct file_operations rr_fops = {
 	.unlocked_ioctl = rr_ioctl,
 };
 
-/* Registering and unregistering the misc device */
-static struct miscdevice rr_misc = {
-	.minor = 42,
-	.name = "rawrabbit",
-	.fops = &rr_fops,
-};
 
 /* init and exit */
 static int rr_init(void)
 {
 	int ret;
-	struct rr_dev *dev = &rr_dev; /* always use dev as pointer */
+	struct rr_dev *tpl;
+
+	INIT_LIST_HEAD(&rr_dev_list);
 
 	if (rr_bufsize > RR_MAX_BUFSIZE) {
 		printk(KERN_WARNING "rawrabbit: too big a size, using 0x%x\n",
@@ -740,13 +755,8 @@ static int rr_init(void)
 		rr_bufsize = RR_MAX_BUFSIZE;
 	}
 
-	dev->dmabuf = __vmalloc(rr_bufsize, GFP_KERNEL | __GFP_ZERO,
-				PAGE_KERNEL);
-	if (!dev->dmabuf)
-		return -ENOMEM;
-
-	/* misc device, that's trivial */
-	ret = misc_register(&rr_misc);
+	/* first misc device, that's trivial */
+	ret = misc_register(&rr_single_misc);
 	if (ret < 0) {
 		printk(KERN_ERR "%s: Can't register misc device\n",
 		       KBUILD_MODNAME);
@@ -754,28 +764,23 @@ static int rr_init(void)
 	}
 
 	/* prepare registration of the pci driver according to parameters */
-	dev->devsel->vendor = rr_vendor;
-	dev->devsel->device = rr_device;
-	dev->devsel->subvendor = RR_DEVSEL_UNUSED;
-	dev->devsel->bus = RR_DEVSEL_UNUSED;
+	tpl = &rr_dev_template; /* always use dev as pointer */
+	tpl->devsel->vendor = rr_vendor;
+	tpl->devsel->device = rr_device;
+	tpl->devsel->subvendor = RR_DEVSEL_UNUSED;
+	tpl->devsel->bus = RR_DEVSEL_UNUSED;
+	rr_fill_table(tpl);
 
-	/* This function return < 0 on error, 0 on timeout, > 0 on success */
-	ret = rr_fill_table_and_probe(dev);
-	if (ret < 0) {
-		misc_deregister(&rr_misc);
-		return ret;
-	}
+	/* register the driver and let things happen by themselves */
+	ret = pci_register_driver(&rr_pcidrv);
 
 	return 0;
 }
 
 static void rr_exit(void)
 {
-	struct rr_dev *dev = &rr_dev;
-
 	pci_unregister_driver(&rr_pcidrv);
-	misc_deregister(&rr_misc);
-	vfree(dev->dmabuf);
+	misc_deregister(&rr_single_misc);
 }
 
 module_init(rr_init);
