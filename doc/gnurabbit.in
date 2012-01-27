@@ -42,7 +42,7 @@
 
 @setchapternewpage off
 
-@set update-month October 2011
+@set update-month January 2012
 
 @finalout
 
@@ -123,19 +123,19 @@ and minor number 42.  If you are running @i{udev} the special file
 number or switch to several devices, I'm yet undecided on this choice.
 
 @menu
-* General features of rawrabbit::  
-* Interrupt management::        
-* Bugs and misfeatures::        
-* The DMA buffer::              
-* System calls implemented::    
-* Ioctl commands::              
-* User space demo programs::    
-* User space benchmarks::       
+* General Features of Rawrabbit::  
+* Interrupt Management::        
+* Bugs and Misfeatures::        
+* The DMA Buffer::              
+* System Calls Implemented::    
+* Ioctl Commands::              
+* User Space Demo Programs::    
+* User Space Benchmarks::       
 @end menu
 
 @c ==========================================================================
-@node General features of rawrabbit, Interrupt management, Raw PCI I/O, Raw PCI I/O
-@section General features of rawrabbit
+@node General Features of Rawrabbit, Interrupt Management, Raw PCI I/O, Raw PCI I/O
+@section General Features of Rawrabbit
 
 The driver is designed to act as a misc device (i.e. a char device)
 towards user programs and as a PCI driver towards hardware, declaring
@@ -183,8 +183,8 @@ is defined in the same file (like @code{rr_dev}) or is an external Linux
 resource (like @code{pci_driver}).
 
 @c ==========================================================================
-@node Interrupt management, Bugs and misfeatures, General features of rawrabbit, Raw PCI I/O
-@section Interrupt management
+@node Interrupt Management, Bugs and Misfeatures, General Features of Rawrabbit, Raw PCI I/O
+@section Interrupt Management
 
 The driver is able to handle the interrupt for the active device. User
 space is allowed to wait for an interrupt and acknowledge it later at
@@ -207,13 +207,12 @@ you'll need to acknowledge the interrupt pretty often, to avoid a
 system lock or data loss in your storage or network device.
 
 @c ==========================================================================
-@node Bugs and misfeatures, The DMA buffer, Interrupt management, Raw PCI I/O
-@section Bugs and misfeatures
+@node Bugs and Misfeatures, The DMA Buffer, Interrupt Management, Raw PCI I/O
+@section Bugs and Misfeatures
 
-@c FIXME: single open
 This version of @i{rawrabbit} creates a single device and can act on a
-single PCI peripheral at a time. This limitation will be removed in
-later versions, as time permits.
+single PCI peripheral at a time. Please note that @i{spec-demo}
+is instead able to drive several devices at the same time.
 
 The @i{read} and @i{write} implementations don't enforce
 general data-size constraints: reading or writing 1, 2, 4, 8 bytes at a
@@ -221,12 +220,13 @@ time forces 8, 16, 32, 64 bit accesses respectively, while bigger
 transfers use unpredictable access patterns to I/O memory, as
 the driver uses @i{copy_from_user} and @i{copy_to_user}.
 
-@c FIXME: interrupt is always requested
 The interrupt line is always requested and handled (by disabling it).
 This means that if
 the line is shared with other devices, you can't avoid it being disabled
 thus breaking the other devices.  A specific ioctl to request/release the
-handler is needed.
+handler is needed.  If you are driving the SPEC device, please note
+that the @i{spec-demo} driver in this package is not requesting the
+interrupt.
 
 @c FIXME: odd bars
 The driver assumes to work with PCI-E so odd BAR areas are not supported.
@@ -245,8 +245,8 @@ viable.  Or the problem may just not appear as things are already
 correct, I can't tell for sure.
 
 @c ==========================================================================
-@node The DMA buffer, System calls implemented, Bugs and misfeatures, Raw PCI I/O
-@section The DMA buffer
+@node The DMA Buffer, System Calls Implemented, Bugs and Misfeatures, Raw PCI I/O
+@section The DMA Buffer
 
 At module load time, a 1MB buffer is allocated. The actual size
 can be changed by means of a module parameter, but it currently
@@ -276,8 +276,8 @@ pattern of actual access to memory can't be controlled, but this is
 not a problem for RAM (as opposed to registers).
 
 @c ==========================================================================
-@node System calls implemented, Ioctl commands, The DMA buffer, Raw PCI I/O
-@section System calls implemented
+@node System Calls Implemented, Ioctl Commands, The DMA Buffer, Raw PCI I/O
+@section System Calls Implemented
 
 The following system calls are implemented in @i{rawrabbit}:
 
@@ -342,8 +342,8 @@ The following system calls are implemented in @i{rawrabbit}:
 @end table        
 
 @c ==========================================================================
-@node Ioctl commands, User space demo programs, System calls implemented, Raw PCI I/O
-@section Ioctl commands
+@node Ioctl Commands, User Space Demo Programs, System Calls Implemented, Raw PCI I/O
+@section Ioctl Commands
 
 The following @i{ioctl} commands are currently implemented. The type
 of the third argument is shown in parentheses after each command:
@@ -422,8 +422,8 @@ of the third argument is shown in parentheses after each command:
 @end table
 
 @c ==========================================================================
-@node User space demo programs, User space benchmarks, Ioctl commands, Raw PCI I/O
-@section User space demo programs
+@node User Space Demo Programs, User Space Benchmarks, Ioctl Commands, Raw PCI I/O
+@section User Space Demo Programs
 
 The subdirectory @code{user/} of this package includes the user-space
 sample tools.  The helper for @i{rawrabbit} (@i{rr}) is called @i{rrcmd}.
@@ -435,7 +435,7 @@ sample tools.  The helper for @i{rawrabbit} (@i{rr}) is called @i{rrcmd}.
 @end menu
 
 @c --------------------------------------------------------------------------
-@node rrcmd,  , User space demo programs, User space demo programs
+@node rrcmd, loadfile, User Space Demo Programs, User Space Demo Programs
 @subsection rrcmd
 
 The @i{rrcmd} program can do raw I/O and change the active binding of
@@ -570,7 +570,7 @@ as follows:
 @end example
 
 @c --------------------------------------------------------------------------
-@node loadfile
+@node loadfile, lm32-loader, rrcmd, User Space Demo Programs
 @subsection loadfile
 
 The program is a user-space firmware loader. It uses the same low-level
@@ -584,7 +584,7 @@ program:
 @end example
 
 @c --------------------------------------------------------------------------
-@node lm32-loader
+@node lm32-loader,  , loadfile, User Space Demo Programs
 @subsection lm32-loader
 
 The program, written by Grzegorz Daniluk, stops the LM32 soft-core,
@@ -599,8 +599,8 @@ currently working with the SPEC board:
 @end example
 
 @c ==========================================================================
-@node User space benchmarks,  , User space demo programs, Raw PCI I/O
-@section User space benchmarks
+@node User Space Benchmarks,  , User Space Demo Programs, Raw PCI I/O
+@section User Space Benchmarks
 
 The package includes a few trivial programs used to benchmark performance
 of the various I/O primitives.
@@ -612,7 +612,7 @@ of the various I/O primitives.
 @end menu
 
 @c --------------------------------------------------------------------------
-@node bench/ioctl, bench/irq878, User space benchmarks, User space benchmarks
+@node bench/ioctl, bench/irq878, User Space Benchmarks, User Space Benchmarks
 @subsection bench/ioctl
 
 The program tests how many ioctl output operations can be performed
@@ -635,7 +635,7 @@ second:
 @end example
 
 @c --------------------------------------------------------------------------
-@node bench/irq878, Benchmarking read and write, bench/ioctl, User space benchmarks
+@node bench/irq878, Benchmarking read and write, bench/ioctl, User Space Benchmarks
 @subsection bench/irq878
 
 
@@ -653,7 +653,7 @@ overhead which is just a few microseconds:
 @end example
 
 @c --------------------------------------------------------------------------
-@node Benchmarking read and write,  , bench/irq878, User space benchmarks
+@node Benchmarking read and write,  , bench/irq878, User Space Benchmarks
 @subsection Benchmarking read and write
 
 No specific program is provided to check access to the DMA buffer, as
@@ -698,7 +698,7 @@ calls.
 
 
 @c ##########################################################################
-@node Firmware Loader
+@node Firmware Loader, Spec-demo, Raw PCI I/O, Top
 @chapter The Firmware Loader
 
 The kernel driver supports loading a binary file from user space.
@@ -815,7 +815,7 @@ or a different file, but this is currently not supported because I had
 to hack in some internals which changed after 2.6.35.
 
 @c ==========================================================================
-@node The Firmware File Format
+@node The Firmware File Format, Working Without Udev, The Firmware File Name, Firmware Loader
 @section The Firmware File Format
 
 Initial testing was performed with the binary firmware provided by Gennum
@@ -921,30 +921,36 @@ a command like:
 @end example
 
 @c ##########################################################################
-@node Spec-demo
+@node Spec-demo,  , Firmware Loader, Top
 @chapter Spec-demo
 
 The kernel module @i{spec-demo.ko} is similar to the @i{rawrabbit.ko}
 driver, but is somewhat specific for the SPEC device.  The current
-implementation, however is mainly an hack (but not a quick one any more)
-to see how
-SPEC-specific stuff works in practice. Most likely the SPEC driver
-will be split to a separate package over time.
+implementation, however, in not very clean and a new driver specific
+for the SPEC is going to be written.
 
-The @i{spec-demo} creates a char device called @code{/dev/spec}.  Note
-that the @i{rrcmd} tool looks for that name if @code{/dev/rawrabbit}
-is not available.
+The driver, with the default configuration, accepts both the older
+SPEC batch, the one with the Gennum vendor and device ID and the newer
+ones, with the CERN vendor ID and the SPEC device ID.  Moreover, you
+can use @code{vendor=} and @code{device=} on the module's command line
+to force it to drive your own pair of identifiers, it you changed them
+in the device for some reason.
+
+For you convenience, the @code{binaries/} subdirectory includes a
+@code{spec_top.bin} file that can be used to run @i{White Rabbit}.
+But you most like will want to run a different bitstream.
 
 @menu
-* Differences from rawrabbit::  
-* Module parameters::           
+* Differences from Rawrabbit::  
+* Module Parameters::           
 * Runing Several SPEC Boards::  
-* Future developments::         
+* Future Developments::         
+* Bugs and Issues::             
 @end menu
 
 @c ==========================================================================
-@node Differences from rawrabbit
-@section Differences from rawrabbit
+@node Differences from Rawrabbit, Module Parameters, Spec-demo, Spec-demo
+@section Differences from Rawrabbit
 
 The driver is different from the @i{rawrabbit} in these aspects:
 
@@ -1000,7 +1006,7 @@ binary files in place in @i{/lib/firmware}:
 @end smallexample
 
 @c ==========================================================================
-@node Module Parameters
+@node Module Parameters, Runing Several SPEC Boards, Differences from Rawrabbit, Spec-demo
 @section Module Parameters
 
 The following module parameters are recognized at module load time:
@@ -1029,7 +1035,7 @@ The following module parameters are recognized at module load time:
 @end table
 
 @c ==========================================================================
-@node Runing Several SPEC Boards
+@node Runing Several SPEC Boards, Future Developments, Module Parameters, Spec-demo
 @section Running Several SPEC Boards
 
 The current version of the driver works with any number of SPEC boards.
@@ -1052,6 +1058,11 @@ slots are seen both as slot zero of two board-specific busses:
    445 spec-demo-0003-0000
 @end example
 
+If you need to use @i{ioctl}, you can act on the specific device.
+Note however that this has not really been tested for lack of time,
+and because the SPEC is being used is mainly being used as an
+independent system running @i{White Rabbit}, at this point in time.
+
 The user space tools use the @code{RR_DEVNAME} environment variable to
 override the default ``@code{/dev/rawrabbit}'':
 
@@ -1063,24 +1074,50 @@ LM32 processor, I can use
 @end example
 
 You can ``@code{export DEVNAME=} to have it persistent in the current
-session
+session.
 
 @c ==========================================================================
-@node Future developments
-@section Future developments
+@node Future Developments, Bugs and Issues, Runing Several SPEC Boards, Spec-demo
+@section Future Developments
 
 The driver currently lacks support to replace the program without
 unloading the kernel module. Similarly, it should support resetting
 and restarting the CPU, accessing GPIO and so on.
 
-The most likely outcome is a separate SPEC package, with a
-multi-module driver based on WB-enumeration, because the SPEC in
-itself cannot have a driver: the actual feature-set depends on the
-bitstream being loaded.
+My plans for this software package are more or less over, and
+full support for the SPEC device will be released as another package,
+without all the generic user-space-driver support of @i{gnurabbit}.
 
 The current driver is only suited for the White Rabbit demo packages,
 as described by the @code{spec-demo} manual in
 @url{http://www.ohwr.org/projects/pfc-sw/files}.
 
+@c ==========================================================================
+@node Bugs and Issues,  , Future Developments, Spec-demo
+@section Bugs and Issues
+
+This version loads the firmware file (the @i{bitstream} to the target
+device using the Gennum protocol regardless of the vendor and device
+ID.  This is because I found that the host system freezes if the
+loading procedure is not completed on a Gennum device, and the vendor
+and device ID is configurable by the user.  Thus, if you want to drive
+a non-gennum device you should arrange to not have a file in
+@i{/lib/firmware} with a name this driver requires.
+
+The are other serious issues with the firmware loader, even if I
+strictly followed the Gennum specification.  The host system sometimes
+freezes soon after loading the module (a pair of seconds later), and this
+seems dependent on which binary is being loaded and which kernel version
+is being run.
+
+Only version 2.6.35 has been used seriously. Version 2.6.32 in
+particular is known to expose a bug in the firmware loader and will
+oops.  I'm going to fix the loader bugs and test newer versions,
+so I may make a new release just to confirm this package runs up
+to version 3.2 (i.e. 2.6.42) of the kernel, but at this time no
+test has been performed.
+
 
 @bye
+
+@c  LocalWords:  rawrabbit
