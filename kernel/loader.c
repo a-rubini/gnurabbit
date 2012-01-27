@@ -150,15 +150,17 @@ static void rr_loader_complete(const struct firmware *fw, void *context)
 	 * If we are handling the gennum device, load this firmware binary;
 	 * otherwise, just complain to the user -- I'd better use a much
 	 * fancier method of defining one programmer per vendor/device...
+	 *
+	 * Update: if the gennum has a different vendor/device ID, aborting
+	 * at this point will lock up the system
 	 */
-	if (dev->devsel->vendor == RR_DEFAULT_VENDOR
-	    && dev->devsel->device == RR_DEFAULT_DEVICE) {
-		ret = __rr_gennum_load(dev, fw->data, fw->size);
-	} else {
-		pr_err("%s: not loading firmware: this is not a GN4124\n",
+	if (dev->devsel->vendor != RR_DEFAULT_VENDOR
+	    || dev->devsel->device != RR_DEFAULT_DEVICE) {
+		pr_err("%s: Warning: this is not a GN4124\n",
 			   __func__);
-		ret = -ENODEV;
+		/* continue anyways.. */
 	}
+	ret = __rr_gennum_load(dev, fw->data, fw->size);
 	/* At this point, we can releae the firmware we got */
 	release_firmware(dev->fw);
 	if (ret)
