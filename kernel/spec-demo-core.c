@@ -35,8 +35,8 @@
 
 #define RR_SINGLE_MINOR 442 /* This is the minor for the standalong thing */
 
-static int rr_vendor = RR_DEFAULT_VENDOR;
-static int rr_device = RR_DEFAULT_DEVICE;
+static int rr_vendor;
+static int rr_device;
 module_param_named(vendor, rr_vendor, int, 0);
 module_param_named(device, rr_device, int, 0);
 
@@ -49,23 +49,35 @@ static struct rr_dev *rr_first_dev;
 static struct list_head rr_dev_list;
 
 /*
- * We have a PCI driver, used to access the BAR areas.
- * One device id only is supported. 
+ * We have a PCI driver, used to access the BAR areas. Older SPEC
+ * devices use the gennum vendor ID, newer devices use their own ID.
+ * Moreover, leave one slot for user-defined identifiers (module_param
+ * above).
  */
+#define PCI_VENDOR_ID_CERN	0x10dc
+#define PCI_DEVICE_ID_SPEC		0x018d
+#define PCI_VENDOR_ID_GENNUM	0x1a39
+#define PCI_DEVICE_ID_GN4124		0x0004
 
-static struct pci_device_id rr_idtable[2]; /* last must be zero */
+DEFINE_PCI_DEVICE_TABLE(rr_idtable) = {
+	{ PCI_DEVICE(PCI_VENDOR_ID_CERN, PCI_DEVICE_ID_SPEC) },
+	{ PCI_DEVICE(PCI_VENDOR_ID_GENNUM, PCI_DEVICE_ID_GN4124) },
+	{ PCI_DEVICE(0,0)}, /* filled with user parameters -- see below */
+	{ 0,},
+};
+#define RR_USER_SLOT 2 /* slot in the above table */
 
 static void rr_fill_table(struct rr_dev *dev)
 {
 	if (dev->devsel->subvendor == RR_DEVSEL_UNUSED) {
-		dev->id_table->subvendor = PCI_ANY_ID;
-		dev->id_table->subdevice = PCI_ANY_ID;
+		dev->id_table[RR_USER_SLOT].subvendor = PCI_ANY_ID;
+		dev->id_table[RR_USER_SLOT].subdevice = PCI_ANY_ID;
 	} else {
-		dev->id_table->subvendor = dev->devsel->subvendor;
-		dev->id_table->subdevice = dev->devsel->subdevice;
+		dev->id_table[RR_USER_SLOT].subvendor = dev->devsel->subvendor;
+		dev->id_table[RR_USER_SLOT].subdevice = dev->devsel->subdevice;
 	}
-	dev->id_table->vendor = dev->devsel->vendor;
-	dev->id_table->device = dev->devsel->device;
+	dev->id_table[RR_USER_SLOT].vendor = dev->devsel->vendor;
+	dev->id_table[RR_USER_SLOT].device = dev->devsel->device;
 }
 
 
