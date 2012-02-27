@@ -122,6 +122,7 @@ static int rr_pciprobe (struct pci_dev *pdev, const struct pci_device_id *id)
 	i = pci_enable_device(pdev);
 	if (i < 0)
 	    return i;
+	pci_enable_msi(pdev);
 
 	dev->pdev = pdev;
 
